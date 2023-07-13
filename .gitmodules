@@ -1,0 +1,4 @@
+[submodule "src/dxtblibs/libs/libcint"]
+	path = src/dxtblibs/libs/libcint
+	url = git@github.com:marvinfriede/libcint.git
+	branch = dxtb

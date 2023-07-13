@@ -1,6 +1,3 @@
-# misc
-_version.txt
-
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -132,6 +129,5 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
-# exclude libcint
-**/libcint/
+# exclude compiled stuff
 **/libs/deps/
