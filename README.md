@@ -11,7 +11,7 @@ It is based on [PySCF's lib directory](https://github.com/pyscf/pyscf/tree/maste
 1. Get the repository
 
 ```console
-git clone
+git clone git@github.com:grimme-lab/dxtblibs.git
 cd dxtblibs
 ```
 
@@ -26,7 +26,7 @@ popd
 3. Create an environment (`conda`) for building the wheels. The example here uses Python 3.10, but we support 3.8-3.11.
 
 ```console
-mamba create -n wheel --yes python=3.10 auditwheel c-compiler fortran-compiler python pip python-build pkgconfig patchelf cffi numpy unzip wheel
+mamba create -n wheel-310 --yes python=3.10 auditwheel c-compiler cmake fortran-compiler numpy python pip python-build pkgconfig patchelf unzip wheel
 ```
 
 4. Build the wheel on your system

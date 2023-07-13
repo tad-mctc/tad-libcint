@@ -1,7 +1,7 @@
 #!/usr/bin/env fish
 
 # environments are created with:
-# mamba create -n wheel-<version> --yes python=<version> auditwheel c-compiler fortran-compiler python pip python-build pkgconfig patchelf cffi numpy meson unzip wheel
+# mamba create -n wheel-<version> --yes python=<version> auditwheel c-compiler fortran-compiler cmake meson numpy python pip python-build pkgconfig patchelf unzip wheel
 
 set -l VERSIONS "38" "39" "310" "311"
 
