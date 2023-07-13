@@ -1,8 +1,8 @@
-import os
-import sys
 import ctypes
 import ctypes.util
-from typing import Callable, Dict, Any
+import os
+import sys
+from typing import Any, Callable, Dict
 
 __all__ = ["CINT", "CGTO"]
 
@@ -19,10 +19,10 @@ def _library_loader(name: str, relpath: str) -> Callable:
         if name not in _libs:
             try:
                 _libs[name] = ctypes.cdll.LoadLibrary(path)
-            except OSError as e:
+            except OSError as exc:
                 path2 = ctypes.util.find_library(name)
                 if path2 is None:
-                    raise e
+                    raise exc
                 _libs[name] = ctypes.cdll.LoadLibrary(path2)
         return _libs[name]
 
@@ -30,12 +30,12 @@ def _library_loader(name: str, relpath: str) -> Callable:
 
 
 # libraries
-_ext = "dylib" if sys.platform == "darwin" else "so"
+ext = "dylib" if sys.platform == "darwin" else "so"
 
-_libcint_relpath = f"libcint.{_ext}"
+_libcint_relpath = f"libcint.{ext}"
 CINT = _library_loader("cint", _libcint_relpath)
 
-_libcgto_relpath = f"libcgto.{_ext}"
+_libcgto_relpath = f"libcgto.{ext}"
 CGTO = _library_loader("cgto", _libcgto_relpath)
 
 # _libcpbc_relpath = f"libpbc.{_ext}"

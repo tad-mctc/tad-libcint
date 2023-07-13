@@ -20,4 +20,3 @@ for VERSION in $VERSIONS
     conda deactivate
     rm -rf build/ dist/
 end
-

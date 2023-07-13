@@ -521,4 +521,3 @@ void GTOval_ip_spinor(int ngrids, int *shls_slice, int *ao_loc,
                            ngrids, param, shls_slice, ao_loc,
                            ao, coord, non0table, atm, natm, bas, nbas, env);
 }
-

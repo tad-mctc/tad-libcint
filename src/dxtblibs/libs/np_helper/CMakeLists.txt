@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-add_library(np_helper SHARED 
+add_library(np_helper SHARED
   transpose.c pack_tril.c npdot.c condense.c omp_reduce.c np_helper.c)
 
 set_target_properties(np_helper PROPERTIES

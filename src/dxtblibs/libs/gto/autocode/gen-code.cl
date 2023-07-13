@@ -31,7 +31,7 @@
 (defun ternary-subscript (ops)
   "convert the polynomial xyz to the ternary"
   (cond ((null ops) ops)
-        (t (convert-from-n-sys (mapcar #'xyz-to-ternary 
+        (t (convert-from-n-sys (mapcar #'xyz-to-ternary
                                        (remove-if (lambda (x) (eql x 's))
                                                   (scripts-of ops)))
                                3))))

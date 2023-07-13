@@ -1,11 +1,11 @@
 /* Copyright 2014-2018 The PySCF Developers. All Rights Reserved.
-  
+
    Licensed under the Apache License, Version 2.0 (the "License");
     you may not use this file except in compliance with the License.
     You may obtain a copy of the License at
- 
+
         http://www.apache.org/licenses/LICENSE-2.0
- 
+
     Unless required by applicable law or agreed to in writing, software
     distributed under the License is distributed on an "AS IS" BASIS,
     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -128,7 +128,7 @@ void SGXdot_nrk(int (*intor)(), SGXJKOperator **jkop, SGXJKArray **vjk,
         int* inds = (int*) malloc(tot_grids*sizeof(int));
 
         double *grids = env + (size_t) env[PTR_GRIDS];
-        
+
         if (vhfopt != NULL && vhfopt->dm_cond != NULL) {
                 for (k = 0; k < tot_grids; k++) {
                         shls[2] = k;
@@ -167,7 +167,7 @@ void SGXdot_nrk(int (*intor)(), SGXJKOperator **jkop, SGXJKArray **vjk,
                 jkop[idm]->contract(buf, dms[idm], vjk[idm],
                                     i0, i1, j0, j1, inds, tmp_ngrids);
         }
-        
+
         free(inds);
 }
 

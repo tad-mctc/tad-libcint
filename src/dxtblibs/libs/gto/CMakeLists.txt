@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-add_library(cgto SHARED 
+add_library(cgto SHARED
   fill_int2c.c fill_nr_3c.c fill_r_3c.c fill_int2e.c fill_r_4c.c
   ft_ao.c ft_ao_deriv.c fill_grids_int2c.c
   grid_ao_drv.c deriv1.c deriv2.c nr_ecp.c nr_ecp_deriv.c
@@ -26,4 +26,3 @@ set_target_properties(cgto PROPERTIES
 )
 
 target_link_libraries(cgto cint np_helper ${BLAS_LIBRARIES} ${OPENMP_C_PROPERTIES})
-

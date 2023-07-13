@@ -1,11 +1,11 @@
 /* Copyright 2014-2018 The PySCF Developers. All Rights Reserved.
-  
+
    Licensed under the Apache License, Version 2.0 (the "License");
     you may not use this file except in compliance with the License.
     You may obtain a copy of the License at
- 
+
         http://www.apache.org/licenses/LICENSE-2.0
- 
+
     Unless required by applicable law or agreed to in writing, software
     distributed under the License is distributed on an "AS IS" BASIS,
     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -30,7 +30,7 @@
 
 void int2e_optimizer(CINTOpt **opt, int *atm, int natm, int *bas, int nbas, double *env);
 /*
- * 8-fold symmetry, k>=l, k>=i>=j, 
+ * 8-fold symmetry, k>=l, k>=i>=j,
  */
 static void fillnr_s8(int (*intor)(), int (*fprescreen)(), double *eri,
                       int ish, int jsh, CVHFOpt *vhfopt, IntorEnvs *envs)
@@ -135,4 +135,3 @@ void GTO2e_cart_or_sph(int (*intor)(), CINTOpt *cintopt, double *eri, int *ao_lo
 }
         CVHFdel_optimizer(&vhfopt);
 }
-

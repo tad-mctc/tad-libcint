@@ -1,4 +1,4 @@
-#!/usr/bin/env clisp 
+#!/usr/bin/env clisp
 ;;;; Copyright (C) 2014-2018  Qiming Sun <osirpt.sun@gmail.com>
 
 (load "gen-code.cl")
@@ -24,4 +24,3 @@
   '("GTOval_iprc"       (nabla rc))
   '("GTOval_ipr"        (nabla r))
 )
-

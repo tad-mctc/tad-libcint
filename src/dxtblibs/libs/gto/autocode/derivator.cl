@@ -49,7 +49,7 @@
   (append (consts-of cell) (ops-of cell)))
 (defun cell? (c)
   (and (listp c)
-       (numberp (phase-of c))))   
+       (numberp (phase-of c))))
 (defun rest-op (ops)
   (cddr ops))
 
@@ -290,7 +290,7 @@
          (for-each-q-comps
            (q)
            (lambda (q-comp)
-             (cells-prod (list cs q-comp)))))) 
+             (cells-prod (list cs q-comp))))))
 ;;; Dirac formulation:
 (defmacro -with-q-cross- (q1 q2 comp1 comp2 comp3)
     ;; sigma_x = 1 * B_comp1 + A_comp1 * 1 + i (A_comp2 B_comp3 - A_comp3 B_comp2)
@@ -400,7 +400,7 @@
                              (apply #'make-vec
                                     (for-each-vector-comps
                                       (v2)
-                                      (lambda (x) (reduce-vs-iter v1 x))))) 
+                                      (lambda (x) (reduce-vs-iter v1 x)))))
                             (t (contract-2q v1 v2)))))))
     (cond ((null vs) vs)
           (t (reduce #'reduce-vs-iter vs

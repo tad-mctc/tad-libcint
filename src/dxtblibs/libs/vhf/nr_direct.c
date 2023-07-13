@@ -1,11 +1,11 @@
 /* Copyright 2014-2022 The PySCF Developers. All Rights Reserved.
-  
+
    Licensed under the Apache License, Version 2.0 (the "License");
     you may not use this file except in compliance with the License.
     You may obtain a copy of the License at
- 
+
         http://www.apache.org/licenses/LICENSE-2.0
- 
+
     Unless required by applicable law or agreed to in writing, software
     distributed under the License is distributed on an "AS IS" BASIS,
     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -402,7 +402,7 @@ static int _shls_block_partition_lim(int *block_loc, int *shls_slice,
 /*
  * drv loop over ij, generate eris of kl for given ij, call fjk to
  * calculate vj, vk.
- * 
+ *
  * n_dm is the number of dms for one [array(ij|kl)], it is also the size of dms and vjk
  * ncomp is the number of components that produced by intor
  * shls_slice = [ishstart, ishend, jshstart, jshend, kshstart, kshend, lshstart, lshend]

@@ -6,4 +6,3 @@
 #endif
 
 #define HAVE_FFS
-

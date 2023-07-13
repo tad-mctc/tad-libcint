@@ -1,0 +1,43 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.4.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-shebang-scripts-are-executable
+      - id: check-toml
+      - id: check-yaml
+      - id: check-added-large-files
+      - id: debug-statements
+        language_version: python3
+
+  - repo: https://github.com/asottile/setup-cfg-fmt
+    rev: v2.4.0
+    hooks:
+      - id: setup-cfg-fmt
+        args:
+          [
+            --include-version-classifiers,
+            --min-py-version,
+            "3.7",
+            --max-py-version,
+            "3.11",
+          ]
+
+  - repo: https://github.com/asottile/pyupgrade
+    rev: v3.9.0
+    hooks:
+      - id: pyupgrade
+        args: [--py38-plus, --keep-runtime-typing]
+
+  - repo: https://github.com/pycqa/isort
+    rev: 5.12.0
+    hooks:
+      - id: isort
+        name: isort (python)
+        args: ["--profile", "black", "--filter-files"]
+
+  - repo: https://github.com/psf/black
+    rev: 23.7.0
+    hooks:
+      - id: black

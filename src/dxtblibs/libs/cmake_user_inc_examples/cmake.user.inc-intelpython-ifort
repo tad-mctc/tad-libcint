@@ -10,4 +10,3 @@ message("LAPACK libraries: ${LAPACK_LIBRARIES}")
 
 add_subdirectory(nao)
 add_subdirectory(sparsetools)
-

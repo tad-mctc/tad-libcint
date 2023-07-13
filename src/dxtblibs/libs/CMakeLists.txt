@@ -153,7 +153,7 @@ if(BUILD_LIBCINT)
   if (USE_QCINT)
     set(LIBCINT_GIT https://github.com/sunqm/qcint.git) # qcint is an optimized implementation for x86-64 architecture
     if(NOT BUILD_MARCH_NATIVE)
-      message(WARNING "The BUILD_MARCH_NATIVE option is not specified! qcint may not compile unless you explicitly pass compiler flags that turn on vectorization!")    
+      message(WARNING "The BUILD_MARCH_NATIVE option is not specified! qcint may not compile unless you explicitly pass compiler flags that turn on vectorization!")
     endif()
   endif()
 
