@@ -145,7 +145,8 @@ set(CXX_LINK_TEMPLATE "<CMAKE_CXX_COMPILER> <CMAKE_SHARED_LIBRARY_CXX_FLAGS> <LA
 
 include(ExternalProject)
 option(BUILD_LIBCINT "Using libcint for analytical gaussian integral" ON)
-option(WITH_F12 "Compling F12 integrals" ON)
+option(WITH_F12 "Compiling F12 integrals" ON)
+option(PYPZPX "Compiling with PYPZPX p-orbital ordering" OFF)
 option(USE_QCINT "Using the qcint library (optimized for x86-64) for gaussian integral evaluation" OFF)
 
 if(BUILD_LIBCINT)
@@ -165,6 +166,7 @@ if(BUILD_LIBCINT)
     INSTALL_DIR ${PROJECT_SOURCE_DIR}/deps
     CMAKE_ARGS -DCMAKE_BUILD_TYPE=RELEASE
     CMAKE_CACHE_ARGS
+        -DPYPZPX:STRING=${PYPZPX}
         -DWITH_F12:STRING=${WITH_F12}
         -DWITH_RANGE_COULOMB:STRING=0
         -DWITH_FORTRAN:STRING=0

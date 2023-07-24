@@ -18,6 +18,7 @@ CMAKE_ARGS = [
     "-DDISABLE_DFT=ON",
     "-DBUILD_LIBCINT=ON",
     "-DWITH_F12=OFF",
+    "-DPYPZPX=OFF",
     # '-DWITH_RANGE_COULOMB=OFF', # no variable in CMakeLists.txt
 ]
 
