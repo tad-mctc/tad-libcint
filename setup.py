@@ -22,6 +22,9 @@ CMAKE_ARGS = [
     # '-DWITH_RANGE_COULOMB=OFF', # no variable in CMakeLists.txt
 ]
 
+# Number of cores for CMake's build step
+CORES = 8
+
 
 class CMakeExtension(Extension):
     """
@@ -104,7 +107,7 @@ class CMakeBuildExt(build_ext):
         self.spawn(cmd)
 
         self.announce("Building binaries", level=3)
-        cmd = ["cmake", "--build", build_dir, "-j"]
+        cmd = ["cmake", "--build", build_dir, f"-j{CORES}"]
         self.spawn(cmd)
 
 
