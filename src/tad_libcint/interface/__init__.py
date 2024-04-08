@@ -14,34 +14,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-[tool.pytest.ini_options]
-addopts = "--doctest-modules"
-testpaths = ["test"]
-pythonpath = ["src"]
-markers = [
-  "grad: Marks tests which perform 'gradcheck' evaluations, this can be slow.",
-  "large: Marks tests for large molecules, this can be slow.",
-]
+"""
+Interface
+=========
 
-
-[tool.mypy]
-check_untyped_defs = true
-disallow_any_generics = true
-disallow_incomplete_defs = true
-disallow_untyped_defs = true
-warn_redundant_casts = true
-warn_unreachable = true
-warn_unused_ignores = true
-exclude = '''
-  (?x)
-  ^test/conftest.py$
-  | ^src/tad_libcint/libs
-'''
-
-
-[tool.coverage.run]
-plugins = ["covdefaults"]
-source = ["./src"]
-
-[tool.coverage.report]
-fail_under = 10
+This subpackage contains the interface to the *libcint* library.
+"""
+from .intor import *
+from .namemanager import *
+from .utils import *
+from .wrapper import *

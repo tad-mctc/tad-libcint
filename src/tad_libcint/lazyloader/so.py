@@ -14,34 +14,30 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-[tool.pytest.ini_options]
-addopts = "--doctest-modules"
-testpaths = ["test"]
-pythonpath = ["src"]
-markers = [
-  "grad: Marks tests which perform 'gradcheck' evaluations, this can be slow.",
-  "large: Marks tests for large molecules, this can be slow.",
-]
+"""
+LazyLoader: Shared Objects
+==========================
+
+Lazing loading of the *libcint* shared objects.
+"""
+
+from __future__ import annotations
+
+from tad_libcint.typing import Any, Callable
+
+__all__ = ["LazySharedLibraryLoader"]
 
 
-[tool.mypy]
-check_untyped_defs = true
-disallow_any_generics = true
-disallow_incomplete_defs = true
-disallow_untyped_defs = true
-warn_redundant_casts = true
-warn_unreachable = true
-warn_unused_ignores = true
-exclude = '''
-  (?x)
-  ^test/conftest.py$
-  | ^src/tad_libcint/libs
-'''
+class LazySharedLibraryLoader:
+    """
+    Lazy loader for shared objects. The ojects are expected to be callable.
+    """
 
+    def __init__(self, loader: Callable) -> None:
+        self._loader = loader
+        self._lib = None
 
-[tool.coverage.run]
-plugins = ["covdefaults"]
-source = ["./src"]
-
-[tool.coverage.report]
-fail_under = 10
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        if self._lib is None:
+            self._lib = self._loader()
+        return self._lib(*args, **kwargs)

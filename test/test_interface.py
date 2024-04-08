@@ -14,34 +14,23 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-[tool.pytest.ini_options]
-addopts = "--doctest-modules"
-testpaths = ["test"]
-pythonpath = ["src"]
-markers = [
-  "grad: Marks tests which perform 'gradcheck' evaluations, this can be slow.",
-  "large: Marks tests for large molecules, this can be slow.",
-]
+"""
+Test interface utils.
+"""
+from __future__ import annotations
+
+import pytest
+
+from tad_libcint.interface.intor import _get_uniqueness
 
 
-[tool.mypy]
-check_untyped_defs = true
-disallow_any_generics = true
-disallow_incomplete_defs = true
-disallow_untyped_defs = true
-warn_redundant_casts = true
-warn_unreachable = true
-warn_unused_ignores = true
-exclude = '''
-  (?x)
-  ^test/conftest.py$
-  | ^src/tad_libcint/libs
-'''
-
-
-[tool.coverage.run]
-plugins = ["covdefaults"]
-source = ["./src"]
-
-[tool.coverage.report]
-fail_under = 10
+@pytest.mark.parametrize(
+    "lists",
+    [
+        ([1, 2, 3], [0, 1, 2]),
+        ([1, 1, 2, 3, 2], [0, 0, 1, 2, 1]),
+        ([2, 2, 1, 3, 2], [0, 0, 1, 2, 0]),
+    ],
+)
+def test_get_uniqueness(lists: tuple[list[int], list[int]]) -> None:
+    assert lists[1] == _get_uniqueness(lists[0])

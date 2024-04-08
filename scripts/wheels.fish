@@ -16,7 +16,7 @@ for VERSION in $VERSIONS
     conda activate wheel-$VERSION
     echo "Activate wheel-$VERSION"
     python -m build --wheel
-    auditwheel repair -w wheels --plat manylinux_2_12_x86_64 dist/dxtblibs-*-cp$VERSION-cp$VERSION-linux_x86_64.whl
+    auditwheel repair -w wheels --plat manylinux_2_12_x86_64 dist/tad-libcint-*-cp$VERSION-cp$VERSION-linux_x86_64.whl
     conda deactivate
     rm -rf build/ dist/
 end

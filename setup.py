@@ -1,3 +1,22 @@
+# This file is part of tad-libcint, modified from diffqc/dqc.
+#
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (C) 2024 Grimme Group
+#
+# Original file licensed under the Apache License, Version 2.0 by diffqc/dqc.
+# Modifications made by Grimme Group.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 """
 Setup for C Extension.
 """
@@ -7,8 +26,8 @@ from pathlib import Path
 from setuptools import Extension, setup
 from setuptools.command.build_ext import build_ext
 
-module_name: str = "dxtblibs"
-ext_name: str = "dxtblibs.pyscflibs"
+module_name: str = "tad_libcint"
+ext_name: str = "tad_libcint.pyscflibs"
 
 file_dir: Path = Path(__file__).resolve().parent
 
@@ -31,7 +50,7 @@ class CMakeExtension(Extension):
     Extension module for CMake.
     """
 
-    def __init__(self, name: str, sourcedir: str = ""):
+    def __init__(self, name: str, sourcedir: str = "") -> None:
         """
         Initialize a new CMakeExtension.
 
@@ -51,7 +70,7 @@ class CMakeBuildExt(build_ext):
     Build extension module for CMake.
     """
 
-    def run(self):
+    def run(self) -> None:
         """
         Run the extension building process.
         """
@@ -59,7 +78,7 @@ class CMakeBuildExt(build_ext):
         assert extension.name == ext_name
         self.build_extension(self.extensions[0])
 
-    def build_extension(self, ext: Extension):
+    def build_extension(self, ext: Extension) -> None:
         """
         Build an extension.
 
@@ -70,7 +89,7 @@ class CMakeBuildExt(build_ext):
         """
         self.construct_extension(ext)
 
-    def construct_extension(self, ext: Extension):
+    def construct_extension(self, ext: Extension) -> None:
         """
         Construct an extension.
 
@@ -87,7 +106,7 @@ class CMakeBuildExt(build_ext):
         )
         self.build_cmake(ext, lib_dir, build_dir)
 
-    def build_cmake(self, ext: Extension, lib_dir: Path, build_dir: Path):
+    def build_cmake(self, ext: Extension, lib_dir: Path, build_dir: Path) -> None:
         """
         Build an extension with CMake.
 
@@ -107,7 +126,7 @@ class CMakeBuildExt(build_ext):
         self.spawn(cmd)
 
         self.announce("Building binaries", level=3)
-        cmd = ["cmake", "--build", build_dir, f"-j{CORES}"]
+        cmd = ["cmake", "--build", str(build_dir), f"-j{CORES}"]
         self.spawn(cmd)
 
 

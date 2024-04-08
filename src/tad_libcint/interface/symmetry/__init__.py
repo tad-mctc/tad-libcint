@@ -14,34 +14,25 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-[tool.pytest.ini_options]
-addopts = "--doctest-modules"
-testpaths = ["test"]
-pythonpath = ["src"]
-markers = [
-  "grad: Marks tests which perform 'gradcheck' evaluations, this can be slow.",
-  "large: Marks tests for large molecules, this can be slow.",
-]
+"""
+Interface: Symmetry
+===================
 
+Collection of symmetry classes.
+"""
+from typing import TYPE_CHECKING
 
-[tool.mypy]
-check_untyped_defs = true
-disallow_any_generics = true
-disallow_incomplete_defs = true
-disallow_untyped_defs = true
-warn_redundant_casts = true
-warn_unreachable = true
-warn_unused_ignores = true
-exclude = '''
-  (?x)
-  ^test/conftest.py$
-  | ^src/tad_libcint/libs
-'''
+if TYPE_CHECKING:
+    from tad_libcint.interface.symmetry import s1 as s1
+    from tad_libcint.interface.symmetry import s4 as s4
+else:
+    import tad_libcint.lazyloader as _lazy
 
+    __getattr__, __dir__, __all__ = _lazy.attach_module(
+        __name__,
+        ["s1", "s4"],
+    )
 
-[tool.coverage.run]
-plugins = ["covdefaults"]
-source = ["./src"]
+    del _lazy
 
-[tool.coverage.report]
-fail_under = 10
+del TYPE_CHECKING

@@ -14,34 +14,17 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-[tool.pytest.ini_options]
-addopts = "--doctest-modules"
-testpaths = ["test"]
-pythonpath = ["src"]
-markers = [
-  "grad: Marks tests which perform 'gradcheck' evaluations, this can be slow.",
-  "large: Marks tests for large molecules, this can be slow.",
-]
+"""
+Torch autodiff libcint
+======================
 
+Implementation of a PyTorch-based interface to the *libcint* high-performance
+integral library.
+"""
+import torch
 
-[tool.mypy]
-check_untyped_defs = true
-disallow_any_generics = true
-disallow_incomplete_defs = true
-disallow_untyped_defs = true
-warn_redundant_casts = true
-warn_unreachable = true
-warn_unused_ignores = true
-exclude = '''
-  (?x)
-  ^test/conftest.py$
-  | ^src/tad_libcint/libs
-'''
+from ._version import __version__
+from .api import CGTO, CINT
+from .interface import LibcintWrapper, int1e
 
-
-[tool.coverage.run]
-plugins = ["covdefaults"]
-source = ["./src"]
-
-[tool.coverage.report]
-fail_under = 10
+__all__ = ["CINT", "CGTO", "LibcintWrapper", "int1e", "__version__"]

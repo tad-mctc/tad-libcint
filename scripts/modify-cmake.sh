@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# This script modifies the main CMakeList.txt in dxtblibs/libs.
+# This script modifies the main CMakeList.txt in tad-libcint/libs.
 #
 # Note additional modifications are required in the CMakeFiles of the remaining
-# subpackages in dxtblibs/libs. Use the following:
+# subpackages in tad-libcint/libs. Use the following:
 #
 # set_target_properties(cgto PROPERTIES
 #   #LIBRARY_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}
@@ -14,10 +14,10 @@
 #
 # Always execute in root of repository!
 
-DIR="dxtblibs"
+DIR="tad-libcint"
 
 if [[ "$(basename "$(pwd)")" == "$DIR" ]]; then
-    CM="dxtblibs/libs/CMakeLists.txt"
+    CM="tad-libcint/libs/CMakeLists.txt"
 
     sed -i 's/-DWITH_RANGE_COULOMB:STRING=1/-DWITH_RANGE_COULOMB:STRING=0/' $CM
 
