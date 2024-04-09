@@ -44,11 +44,12 @@ jobs:
         shell: ${{ matrix.shell || 'bash -l {0}' }}
 
     steps:
+      # Check latest git version at https://github.com/search?q=org%3Aiusrepo+topic%3Arpm+git&s=updated&type=repositories
       - name: Install Latest Git
         run: |
           sudo yum install -y https://repo.ius.io/ius-release-el7.rpm
           sudo yum remove git -y
-          sudo yum install -y git2u
+          sudo yum install -y git236
 
       - name: Check Git version
         run: git --version
