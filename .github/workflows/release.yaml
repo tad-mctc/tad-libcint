@@ -71,7 +71,9 @@ jobs:
           cffi
           cmake
           git
+          make
           meson
+          ninja
           numpy
           pip
           python-build

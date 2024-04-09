@@ -32,16 +32,6 @@ ext_name: str = "tad_libcint.pyscflibs"
 
 file_dir: Path = Path(__file__).resolve().parent
 
-print("")
-print("")
-print("TOP LEVEL")
-print(file_dir)
-call(["echo", " "])
-call(["echo", file_dir])
-call(["ls", "-la", file_dir])
-print("")
-print("")
-print("")
 
 # Arguments for CMake
 CMAKE_ARGS = [
@@ -112,7 +102,6 @@ class CMakeBuildExt(build_ext):
         """
         # libraries from PySCF
         lib_dir = file_dir / "src" / module_name / "libs"
-        print("")
         print("")
         call(["echo", " "])
         call(["echo", "construct_extension"])

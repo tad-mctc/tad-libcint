@@ -1,0 +1,24 @@
+include src/tad_libcint/libs/CMakeLists.txt
+include src/tad_libcint/libs/config.h
+include src/tad_libcint/libs/config.h.in
+
+recursive-include src/tad_libcint/libs/gto *
+prune src/tad_libcint/libs/gto/autocode
+prune src/tad_libcint/libs/gto/test
+
+recursive-include src/tad_libcint/libs/np_helper *
+prune src/tad_libcint/libs/np_helper/test
+
+recursive-include src/tad_libcint/libs/vhf *
+prune src/tad_libcint/libs/vhf/test
+
+# libcint
+include src/tad_libcint/libs/libcint/AUTHORS
+include src/tad_libcint/libs/libcint/CMakeLists.txt
+include src/tad_libcint/libs/libcint/ChangeLog
+include src/tad_libcint/libs/libcint/LICENSE
+include src/tad_libcint/libs/libcint/README.rst
+
+recursive-include src/tad_libcint/libs/libcint/cmake *
+recursive-include src/tad_libcint/libs/libcint/include *
+recursive-include src/tad_libcint/libs/libcint/src *
