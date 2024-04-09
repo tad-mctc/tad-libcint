@@ -19,5 +19,6 @@ include src/tad_libcint/libs/libcint/LICENSE
 include src/tad_libcint/libs/libcint/README.rst
 
 recursive-include src/tad_libcint/libs/libcint/cmake *
+recursive-include src/tad_libcint/libs/libcint/doc *
 recursive-include src/tad_libcint/libs/libcint/include *
 recursive-include src/tad_libcint/libs/libcint/src *
