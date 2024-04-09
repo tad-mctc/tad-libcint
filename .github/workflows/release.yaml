@@ -44,8 +44,6 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
-        with:
-          submodules: recursive
 
       - name: Create environment
         run: >-
@@ -67,6 +65,11 @@ jobs:
           patchelf
           unzip
           wheel
+
+      - name: Checkout submodules
+        run: |
+          conda activate wheel-${{ matrix.python }}
+          git submodule update --init --recursive
 
       - name: Build wheel (bdist)
         run: |

@@ -53,6 +53,14 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      - name: Debug print
+        run: |
+          python --version
+          python -m pip --version
+          pwd
+          ls -laF
+          tree -a
+
       - name: Install dependencies
         run: |
           python3 -m pip install --upgrade pip
