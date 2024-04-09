@@ -22,6 +22,7 @@ Setup for C Extension.
 """
 
 from pathlib import Path
+from subprocess import call
 
 from setuptools import Extension, setup
 from setuptools.command.build_ext import build_ext
@@ -30,6 +31,7 @@ module_name: str = "tad_libcint"
 ext_name: str = "tad_libcint.pyscflibs"
 
 file_dir: Path = Path(__file__).resolve().parent
+call(["ls", "-la", file_dir])
 
 # Arguments for CMake
 CMAKE_ARGS = [
@@ -122,6 +124,7 @@ class CMakeBuildExt(build_ext):
         extdir = Path(self.get_ext_fullpath(ext.name)).resolve().parent
         self.announce("Configuring cmake", level=3)
         cmake_args = ["-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=" + str(extdir)] + CMAKE_ARGS
+        call(["ls", "-la", lib_dir])
         cmd = ["cmake", f"-S{lib_dir}", f"-B{build_dir}"] + cmake_args
         self.spawn(cmd)
 

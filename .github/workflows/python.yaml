@@ -55,11 +55,8 @@ jobs:
 
       - name: Debug print
         run: |
-          python --version
-          python -m pip --version
           pwd
-          ls -laF
-          tree -a
+          ls -lcahF
 
       - name: Install dependencies
         run: |
