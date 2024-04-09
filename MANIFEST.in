@@ -3,7 +3,6 @@ include src/tad_libcint/libs/config.h
 include src/tad_libcint/libs/config.h.in
 
 recursive-include src/tad_libcint/libs/gto *
-prune src/tad_libcint/libs/gto/autocode
 prune src/tad_libcint/libs/gto/test
 
 recursive-include src/tad_libcint/libs/np_helper *
