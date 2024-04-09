@@ -59,6 +59,7 @@ jobs:
           fortran-compiler
           cffi
           cmake
+          git
           meson
           numpy
           pip
