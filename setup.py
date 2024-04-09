@@ -34,7 +34,7 @@ file_dir: Path = Path(__file__).resolve().parent
 
 print("")
 print("")
-print("")
+print("TOP LEVEL")
 print(file_dir)
 call(["ls", "-la", file_dir])
 print("")
@@ -111,10 +111,14 @@ class CMakeBuildExt(build_ext):
         # libraries from PySCF
         lib_dir = file_dir / "src" / module_name / "libs"
         print("")
-        print("")
+        print("construct_extension")
         call(["pwd"])
         print("")
+        call(["ls", "-la"])
         print("")
+        print("")
+        print("")
+
         build_dir = Path(self.build_temp)
         self.announce(
             f"Compiling libraries from PySCF from {lib_dir} to {build_dir}", level=3

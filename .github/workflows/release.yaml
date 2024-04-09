@@ -44,8 +44,14 @@ jobs:
         shell: ${{ matrix.shell || 'bash -l {0}' }}
 
     steps:
-      - name: Install Git
-        run: yum install -y git
+      - name: Install Latest Git
+        run: |
+          sudo yum install -y https://repo.ius.io/ius-release-el7.rpm
+          sudo yum remove git -y
+          sudo yum install -y git2u
+
+      - name: Check Git version
+        run: git --version
 
       - name: Checkout code
         uses: actions/checkout@v3
