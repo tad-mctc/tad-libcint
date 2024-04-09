@@ -23,49 +23,20 @@ API
 
 Interface to the library objects from *libcint*. The shared libraries are
 loaded lazily when the first attribute is accessed.
+
+The shared objects are expected to be located in the same directory as this
+module.
 """
-from __future__ import annotations
+from pathlib import Path
 
-import ctypes
-import ctypes.util
-import os
-import sys
-
-from .lazyloader import LazySharedLibraryLoader
-from .typing import Any, Callable
+from tad_libcint.lazyloader import LazySharedLibraryLoader
 
 __all__ = ["CINT", "CGTO"]
 
 
-_libs: dict[str, Any] = {}
-
-
-def _library_loader(name: str, relpath: str) -> Callable:
-    curpath = os.path.dirname(os.path.abspath(__file__))
-    path = os.path.abspath(os.path.join(curpath, relpath))
-
-    # load the library and cache the handler
-    def fcn():
-        if name not in _libs:
-            try:
-                _libs[name] = ctypes.cdll.LoadLibrary(path)
-            except OSError as exc:
-                path2 = ctypes.util.find_library(name)
-                if path2 is None:
-                    raise exc
-                _libs[name] = ctypes.cdll.LoadLibrary(path2)
-        return _libs[name]
-
-    return fcn
-
-
-# libraries
-ext = "dylib" if sys.platform == "darwin" else "so"
-
-
-# Wrap the loaders with the lazy loading class
-CINT = LazySharedLibraryLoader(_library_loader("cint", f"libcint.{ext}"))
-CGTO = LazySharedLibraryLoader(_library_loader("cgto", f"libcgto.{ext}"))
-CPBC = LazySharedLibraryLoader(_library_loader("cpbc", f"libpbc.{ext}"))
-CSYMM = LazySharedLibraryLoader(_library_loader("symm", f"libsymm.{ext}"))
-CVHF = LazySharedLibraryLoader(_library_loader("CVHF", f"libcvhf.{ext}"))
+relpath = Path(__file__).parent.resolve()
+CINT = LazySharedLibraryLoader("cint", relpath)
+CGTO = LazySharedLibraryLoader("cgto", relpath)
+# CPBC = LazySharedLibraryLoader("cpbc", relpath)  # currently not available
+# CSYMM = LazySharedLibraryLoader("symm", relpath)  # currently not available
+# CVHF = LazySharedLibraryLoader("CVHF", relpath)  # currently not available
