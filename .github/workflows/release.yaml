@@ -44,9 +44,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
-
-      - name: Checkout submodules
-        run: git submodule update --init --recursive
+        with:
+          submodules: recursive
 
       - name: Create environment
         run: >-
