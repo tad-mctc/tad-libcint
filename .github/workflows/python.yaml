@@ -24,7 +24,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest]
         python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
         # PyTorch now fully supports Python =<3.11
         # see: https://github.com/pytorch/pytorch/issues/86566
@@ -33,8 +33,6 @@ jobs:
         # see: https://github.com/pytorch/pytorch/issues/110436
         exclude:
           - os: ubuntu-latest
-            python-version: "3.12"
-          - os: macos-latest
             python-version: "3.12"
 
     defaults:
