@@ -20,7 +20,5 @@ Interface
 
 This subpackage contains the interface to the *libcint* library.
 """
-from .intor import *
-from .namemanager import *
-from .utils import *
+from .integrals import *
 from .wrapper import *

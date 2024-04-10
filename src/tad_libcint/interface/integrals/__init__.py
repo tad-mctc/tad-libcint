@@ -15,10 +15,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """
-Test symmetry of integrals.
+Integrals
+=========
+
+This module contains the integral functions.
 """
-import tad_libcint
-
-
-def test_overlap() -> None:
-    pass
+from .int_2c1e import *
