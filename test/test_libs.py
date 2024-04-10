@@ -17,8 +17,6 @@
 """
 Test import of libraries.
 """
-from subprocess import call
-
 import tad_libcint
 
 
@@ -26,9 +24,6 @@ def test_load() -> None:
     """Try loading the libraries."""
     cgto = tad_libcint.CGTO
     cint = tad_libcint.CINT
-
-    call(["ls", "-aclF", __file__])
-    call(["ls", "-aclF", str(cgto.path)])
 
     # test loading the functions
     gto1 = getattr(cgto, "GTOval_cart")
