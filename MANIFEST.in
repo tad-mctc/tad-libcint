@@ -6,7 +6,6 @@ recursive-include src/tad_libcint/libs/gto *
 prune src/tad_libcint/libs/gto/test
 
 recursive-include src/tad_libcint/libs/np_helper *
-prune src/tad_libcint/libs/np_helper/test
 
 recursive-include src/tad_libcint/libs/vhf *
 prune src/tad_libcint/libs/vhf/test
