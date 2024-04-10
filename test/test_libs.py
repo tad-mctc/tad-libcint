@@ -22,8 +22,8 @@ import tad_libcint
 
 def test_load() -> None:
     """Try loading the libraries."""
-    cgto = tad_libcint.CGTO()
-    cint = tad_libcint.CINT()
+    cgto = tad_libcint.CGTO
+    cint = tad_libcint.CINT
 
     # test loading the functions
     gto1 = getattr(cgto, "GTOval_cart")

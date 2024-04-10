@@ -446,9 +446,9 @@ class LibcintWrapper:
             The number of atomic orbitals at the given shell index.
         """
         if self.spherical is True:
-            op = CINT().CINTcgto_spheric
+            op = CINT.CINTcgto_spheric
         else:
-            op = CINT().CINTcgto_cart
+            op = CINT.CINTcgto_cart
 
         bas = self.atm_bas_env[1]
         return op(int2ctypes(sh), np2ctypes(bas))

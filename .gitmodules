@@ -16,5 +16,5 @@
 # limitations under the License.
 [submodule "src/tad_libcint/libs/libcint"]
 	path = src/tad_libcint/libs/libcint
-	url = git@github.com:marvinfriede/libcint.git
+	url = https://github.com/tad-mctc/libcint.git
 	branch = dxtb

@@ -23,6 +23,11 @@ Lazing loading of the *libcint* shared objects.
 
 from __future__ import annotations
 
+import ctypes
+import ctypes.util
+import sys
+from pathlib import Path
+
 from tad_libcint.typing import Any, Callable
 
 __all__ = ["LazySharedLibraryLoader"]
@@ -30,14 +35,34 @@ __all__ = ["LazySharedLibraryLoader"]
 
 class LazySharedLibraryLoader:
     """
-    Lazy loader for shared objects. The ojects are expected to be callable.
+    Lazy loader for shared objects.
     """
 
-    def __init__(self, loader: Callable) -> None:
-        self._loader = loader
-        self._lib = None
+    name: str
+    """The name of the shared object."""
 
-    def __call__(self, *args: Any, **kwargs: Any) -> Any:
-        if self._lib is None:
-            self._lib = self._loader()
-        return self._lib(*args, **kwargs)
+    path: str | Path
+    """The path to the shared object."""
+
+    lib: ctypes.CDLL | None
+    """The shared object library."""
+
+    def __init__(self, name: str, relpath: str | Path) -> None:
+        # Determine the library extension based on the operating system
+        ext = "dylib" if sys.platform == "darwin" else "so"
+
+        self.path = Path(relpath) / f"lib{name.casefold()}.{ext}"
+        self.name = name
+        self.lib = None
+
+    def __getattr__(self, func_name: str) -> Callable[..., Any]:
+        if self.lib is None:
+            try:
+                self.lib = ctypes.cdll.LoadLibrary(str(self.path))
+            except OSError as exc:
+                path2 = ctypes.util.find_library(self.name)
+                if path2 is None:
+                    raise exc
+                self.lib = ctypes.cdll.LoadLibrary(path2)
+
+        return getattr(self.lib, func_name)

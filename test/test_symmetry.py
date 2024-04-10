@@ -15,19 +15,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """
-PyTorch-based Libcint Interface
-===============================
-
-Implementation of a PyTorch-based interface to the *libcint* high-performance
-integral library. The interface supports automatic differentiation with custom
-backward functions that also call the C backend for the derivatives.
-
-Currently, only one-electron integrals are supported.
+Test symmetry of integrals.
 """
-import torch
+import tad_libcint
 
-from ._version import __version__
-from .api import CGTO, CINT
-from .interface import LibcintWrapper, int1e
 
-__all__ = ["CINT", "CGTO", "LibcintWrapper", "int1e", "__version__"]
+def test_overlap() -> None:
+    pass

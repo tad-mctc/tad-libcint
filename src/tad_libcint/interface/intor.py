@@ -431,7 +431,7 @@ class Int2c_V2(BaseInt2c):
 class _CintoptHandler(ctypes.c_void_p):
     def __del__(self):
         try:
-            CGTO().CINTdel_optimizer(ctypes.byref(self))
+            CGTO.CINTdel_optimizer(ctypes.byref(self))
         except AttributeError:
             pass
 
@@ -461,7 +461,7 @@ class Intor:
 
         # get the operator
         opname = int_nmgr.get_intgl_name(wrapper0.spherical)
-        self.op = getattr(CINT(), opname)
+        self.op = getattr(CINT, opname)
         self.optimizer = _get_intgl_optimizer(opname, self.atm, self.bas, self.env)
 
         # prepare the output
@@ -502,7 +502,7 @@ class Intor:
         Tensor
             Integral tensor.
         """
-        drv = CGTO().GTOint2c
+        drv = CGTO.GTOint2c
         outshape = self.outshape
         out = np.empty((*outshape[:-2], outshape[-1], outshape[-2]), dtype=np.float64)
         drv(
@@ -552,7 +552,7 @@ def _get_intgl_optimizer(
     # setup the optimizer
     cintopt = ctypes.POINTER(ctypes.c_void_p)()
     optname = opname.replace("_cart", "").replace("_sph", "") + "_optimizer"
-    copt = getattr(CINT(), optname)
+    copt = getattr(CINT, optname)
     copt(
         ctypes.byref(cintopt),
         np2ctypes(atm),
