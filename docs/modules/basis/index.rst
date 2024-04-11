@@ -1,12 +1,7 @@
-.. _autograd:
+.. _basis:
 
-.. automodule:: tad_mctc.autograd
+.. automodule:: tad_libcint.basis
 
 .. toctree::
 
-   batched
-   gradcheck
-   hessian
-   internals
-   jac
-   nonfunctorch
+   datastructures

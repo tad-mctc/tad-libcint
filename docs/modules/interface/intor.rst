@@ -1,4 +1,4 @@
-.. automodule:: tad_libcint.typing.compat
+.. automodule:: tad_libcint.interface.intor
    :members:
    :undoc-members:
    :show-inheritance:

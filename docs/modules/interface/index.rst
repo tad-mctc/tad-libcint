@@ -1,10 +1,12 @@
-.. _convert:
+.. _interface:
 
-.. automodule:: tad_mctc.convert
+.. automodule:: tad_libcint.interface
 
 .. toctree::
 
-   numpy
-   pse
-   pytorch
-   tensor
+   integrals/index
+   symmetry/index
+   intor
+   namemanager
+   utils
+   wrapper

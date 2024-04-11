@@ -14,14 +14,30 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-name: torch
+name: wheel-38
 channels:
   - defaults
   - conda-forge
   - pytorch
 dependencies:
+  - auditwheel
+  - c-compiler
+  - cxx-compiler
+  - fortran-compiler
+  - cffi
+  - cmake
+  - git
+  - make
+  - meson
+  - ninja
   - numpy
-  - python>=3.8
+  - patchelf
+  - pip
+  - pkgconfig
+  - python-build
+  - python==3.8
   - pytorch>=1.11.0
+  - unzip
+  - wheel
   - pip:
     - tad-mctc
