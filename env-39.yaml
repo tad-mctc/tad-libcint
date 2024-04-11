@@ -14,26 +14,30 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""
-Test import of libraries.
-"""
-from __future__ import annotations
-
-import tad_libcint
-
-
-def test_load() -> None:
-    """Try loading the libraries."""
-    cgto = tad_libcint.CGTO
-    cint = tad_libcint.CINT
-
-    # test loading the functions
-    gto1 = getattr(cgto, "GTOval_cart")
-    gto2 = getattr(cgto, "GTOval_ip_cart")
-    cint1 = getattr(cint, "int1e_ovlp_sph")
-    cint2 = getattr(cint, "int1e_rrkin_sph")
-
-    assert gto1.__name__ == "GTOval_cart"
-    assert gto2.__name__ == "GTOval_ip_cart"
-    assert cint1.__name__ == "int1e_ovlp_sph"
-    assert cint2.__name__ == "int1e_rrkin_sph"
+name: wheel-39
+channels:
+  - defaults
+  - conda-forge
+  - pytorch
+dependencies:
+  - auditwheel
+  - c-compiler
+  - cxx-compiler
+  - fortran-compiler
+  - cffi
+  - cmake
+  - git
+  - make
+  - meson
+  - ninja
+  - numpy
+  - patchelf
+  - pip
+  - pkgconfig
+  - python-build
+  - python==3.9
+  - pytorch>=1.11.0
+  - unzip
+  - wheel
+  - pip:
+    - tad-mctc

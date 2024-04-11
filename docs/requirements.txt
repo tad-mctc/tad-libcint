@@ -1,0 +1,8 @@
+sphinx
+sphinx-book-theme
+sphinx-copybutton
+sphinx-design
+numpy
+scipy
+torch
+jinja2<3.1
