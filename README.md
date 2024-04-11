@@ -38,7 +38,7 @@
         <img src="https://results.pre-commit.ci/badge/github/tad-mctc/tad-libcint/main.svg" alt="pre-commit.ci Status"/>
       </a>
       <a href="https://codecov.io/gh/tad-mctc/tad-libcint">
-        <img src="https://codecov.io/gh/tad-mctc/tad-libcint/branch/main/graph/badge.svg?token=OGJJnZ6t4G" alt="Coverage"/>
+        <img src="https://codecov.io/gh/tad-mctc/tad-libcint/branch/main/graph/badge.svg?token=9faLOhisRx" alt="Coverage"/>
       </a>
     </td>
   </tr>

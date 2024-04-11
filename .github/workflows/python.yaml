@@ -83,4 +83,5 @@ jobs:
           matrix.torch-version == '2.2.2' &&
           matrix.os == 'ubuntu-latest'
         with:
+          token: ${{ secrets.CODECOV_TOKEN }}
           files: ./coverage.xml # optional

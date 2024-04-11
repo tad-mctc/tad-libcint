@@ -25,7 +25,7 @@ PyTorch-based Libcint Interface
     :target: https://tad-mctc.readthedocs.io
     :alt: Documentation Status
 
-.. image:: https://codecov.io/gh/tad-mctc/tad-libcint/branch/main/graph/badge.svg?token=OGJJnZ6t4G
+.. image:: https://codecov.io/gh/tad-mctc/tad-libcint/branch/main/graph/badge.svg?token=9faLOhisRx
     :target: https://codecov.io/gh/tad-mctc/tad-libcint
     :alt: Coverage
 
