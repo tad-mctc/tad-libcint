@@ -52,7 +52,7 @@ The example here uses Python 3.10, but we support 3.8-3.11.
 3. Build the wheel.
 
 .. code::
-  
+
     python -m build --wheel
 
 4. Repair the wheels for cross-distribution packaging.
