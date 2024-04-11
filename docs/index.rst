@@ -34,7 +34,7 @@ PyTorch-based Libcint Interface
     :alt: pre-commit.ci status
 
 
-This package contains a PyTorch-based interface to the *`libcint <https://github.com/sunqm/libcint>`__* high-performance integral library.
+This package contains a PyTorch-based interface to the `libcint <https://github.com/sunqm/libcint>`__ high-performance integral library.
 The interface facilitates automatic differentiation with custom backward functions that call *libcint*'s C backend for derivative calculation.
 
 It is based on `PySCF's lib directory <https://github.com/pyscf/pyscf/tree/master/pyscf/lib>`__. Modifications include
@@ -42,9 +42,9 @@ It is based on `PySCF's lib directory <https://github.com/pyscf/pyscf/tree/maste
 - removal of unnecessary code
 - minor adaptation of build instructions (CMakeLists.txt)
 
-The project was heavily inspired by *`diffqc/dqc <https://github.com/diffqc/dqc>`__* and *`diffqc/dqclibs <https://github.com/diffqc/dqclibs>`__*.
+The project was heavily inspired by `diffqc/dqc <https://github.com/diffqc/dqc>`__ and `diffqc/dqclibs <https://github.com/diffqc/dqclibs>`__.
 
-This interface was mainly written for the calculation of integrals within *`grimme-lab/dxtb <https://github.com/grimme-lab/dxtb>`__*.
+This interface was mainly written for the calculation of integrals within `grimme-lab/dxtb <https://github.com/grimme-lab/dxtb>`__.
 
 
 .. toctree::
