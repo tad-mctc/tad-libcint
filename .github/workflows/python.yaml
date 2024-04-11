@@ -26,14 +26,19 @@ jobs:
       matrix:
         os: [ubuntu-latest]
         python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
-        # PyTorch now fully supports Python =<3.11
-        # see: https://github.com/pytorch/pytorch/issues/86566
-        #
-        # PyTorch does not support Python 3.12 (all platforms)
-        # see: https://github.com/pytorch/pytorch/issues/110436
+        torch-version: ["1.11.0", "1.12.1", "1.13.1", "2.0.1", "2.1.2", "2.2.2"]
         exclude:
-          - os: ubuntu-latest
-            python-version: "3.12"
+          # PyTorch now fully supports Python=<3.11
+          # see: https://github.com/pytorch/pytorch/issues/86566
+          #
+          # PyTorch does not support Python 3.12 (all platforms)
+          # see: https://github.com/pytorch/pytorch/issues/110436
+          - python-version: "3.12"
+          # PyTorch<1.13.0 does only support Python=<3.10
+          - python-version: "3.11"
+            torch-version: "1.11.0"
+          - python-version: "3.11"
+            torch-version: "1.12.1"
 
     defaults:
       run:
