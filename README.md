@@ -6,6 +6,7 @@
     <td>
       <img src="https://img.shields.io/badge/Python-3.8%20|%203.9%20|%203.10%20|%203.11-blue.svg" alt="Python Versions"/>
       <img src="https://img.shields.io/badge/PyTorch-%3E=1.11.0-blue.svg" alt="PyTorch Versions"/>
+      <img src="https://img.shields.io/badge/OS-Linux-blue.svg" alt="Operating Systems">
     </td>
   </tr>
   <tr>
@@ -44,7 +45,6 @@
   </tr>
 </table>
 
-<br>
 
 ## Content
 
@@ -131,7 +131,7 @@ pip install -e .[dev]
 
 The pre-commit hooks are initialized by running the following command in the root of the repository.
 
-```
+```console
 pre-commit install
 ```
 

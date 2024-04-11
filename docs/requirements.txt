@@ -5,4 +5,5 @@ sphinx-design
 numpy
 scipy
 torch
-jinja2<3.1
+tad-mctc
+jinja2==3.1.3
