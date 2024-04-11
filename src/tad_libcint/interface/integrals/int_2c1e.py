@@ -23,6 +23,7 @@ Integrals: Two-center One-electron Integrals
 
 Short-cuts for the 2c1e-integrals.
 """
+from __future__ import annotations
 import torch
 from tad_mctc.math import einsum
 
