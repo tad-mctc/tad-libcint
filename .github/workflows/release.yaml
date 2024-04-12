@@ -70,7 +70,6 @@ jobs:
           fortran-compiler
           cffi
           cmake
-          git
           make
           meson
           ninja
@@ -106,7 +105,9 @@ jobs:
     steps:
       - name: Download build artifacts
         uses: actions/download-artifact@v3
-
+        with:
+          path: dist
+        
       - name: Publish to Test PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
