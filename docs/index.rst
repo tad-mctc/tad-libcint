@@ -1,8 +1,8 @@
 PyTorch-based Libcint Interface
 ===============================
 
-.. image:: https://img.shields.io/badge/python-%3E=3.8-blue.svg
-    :target: https://img.shields.io/badge/python-3.8%20|%203.9%20|%203.10%20|%203.11-blue.svg
+.. image:: https://img.shields.io/badge/Python-3.8%20|%203.9%20|%203.10%20|%203.11%20|%203.12-blue.svg
+    :target: https://img.shields.io/badge/Python-3.8%20|%203.9%20|%203.10%20|%203.11%20|%203.12-blue.svg
     :alt: Python Versions
 
 .. image:: https://img.shields.io/github/v/release/tad-mctc/tad-libcint
@@ -17,9 +17,9 @@ PyTorch-based Libcint Interface
     :target: http://www.apache.org/licenses/LICENSE-2.0
     :alt: Apache-2.0
 
-.. image:: https://github.com/tad-mctc/tad-libcint/actions/workflows/python.yaml/badge.svg
-    :target: https://github.com/tad-mctc/tad-libcint/actions/workflows/python.yaml
-    :alt: CI
+.. image:: https://github.com/tad-mctc/tad-libcint/actions/workflows/ubuntu.yaml/badge.svg
+    :target: https://github.com/tad-mctc/tad-libcint/actions/workflows/ubuntu.yaml
+    :alt: Tests Ubuntu
 
 .. image:: https://readthedocs.org/projects/tad-libcint/badge/?version=latest
     :target: https://tad-mctc.readthedocs.io
@@ -34,7 +34,7 @@ PyTorch-based Libcint Interface
     :alt: pre-commit.ci status
 
 
-This package contains a PyTorch-based interface to the `libcint <https://github.com/sunqm/libcint>`__ high-performance integral library.
+This package contains a PyTorch-based interface to the `libcint <https://github.com/sunqm/libcint>`__ high-performance integral library (check version `here <https://github.com/tad-mctc/libcint/blob/dxtb/README.rst>`__`).
 The interface facilitates automatic differentiation with custom backward functions that call *libcint*'s C backend for derivative calculation.
 
 It is based on `PySCF's lib directory <https://github.com/pyscf/pyscf/tree/master/pyscf/lib>`__. Modifications include
