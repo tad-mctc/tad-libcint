@@ -26,9 +26,9 @@ Short-cuts for the 2c1e-integrals.
 from __future__ import annotations
 
 import torch
+from tad_mctc._version import __tversion__
 from tad_mctc.math import einsum
 
-from tad_libcint._version import __tversion__
 from tad_libcint.typing import Callable, Protocol, Tensor
 
 from ..intor import Intor, IntorNameManager
