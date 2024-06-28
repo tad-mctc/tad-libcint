@@ -4,6 +4,10 @@ Installation
 pip
 ~~~
 
+.. image:: https://img.shields.io/pypi/v/tad-libcint
+    :target: https://pypi.org/project/tad-libcint/
+    :alt: PyPI
+
 The `tad-libcint` package can be obtained from pip.
 
 .. code::

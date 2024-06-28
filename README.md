@@ -4,7 +4,7 @@
   <tr>
     <td>Compatibility:</td>
     <td>
-      <img src="https://img.shields.io/badge/Python-3.8%20|%203.9%20|%203.10%20|%203.11-blue.svg" alt="Python Versions"/>
+      <img src="https://img.shields.io/badge/Python-3.8%20|%203.9%20|%203.10%20|%203.11%20|%203.12-blue.svg" alt="Python Versions"/>
       <img src="https://img.shields.io/badge/PyTorch-%3E=1.11.0-blue.svg" alt="PyTorch Versions"/>
       <img src="https://img.shields.io/badge/OS-Linux-blue.svg" alt="Operating Systems">
     </td>
@@ -48,7 +48,7 @@
 
 ## Content
 
-This package contains a PyTorch-based interface to the *[libcint](https://github.com/sunqm/libcint)* high-performance integral library.
+This package contains a PyTorch-based interface to the *[libcint](https://github.com/sunqm/libcint)* high-performance integral library (check version [here](https://github.com/tad-mctc/libcint/blob/dxtb/README.rst)).
 The interface facilitates automatic differentiation with custom backward functions that call *libcint*'s C backend for derivative calculation.
 
 It is based on [PySCF's lib directory](https://github.com/pyscf/pyscf/tree/master/pyscf/lib). Modifications include
@@ -60,7 +60,6 @@ The project was heavily inspired by *[diffqc/dqc](https://github.com/diffqc/dqc)
 
 This interface was mainly written for the calculation of integrals within *[grimme-lab/dxtb](https://github.com/grimme-lab/dxtb)*.
 
-See [here](https://github.com/tad-mctc/libcint/blob/dxtb/README.rst) for the version of libcint
 
 ## Installation
 
