@@ -102,18 +102,6 @@ class CMakeBuildExt(build_ext):
         """
         # libraries from PySCF
         lib_dir = file_dir / "src" / module_name / "libs"
-        print("")
-        call(["echo", " "])
-        call(["echo", "construct_extension"])
-        call(["pwd"])
-        print("")
-        call(["ls", "-la"])
-        call(["ls", "-la", file_dir])
-        call(["ls", "-la", file_dir / "src"])
-        call(["ls", "-la", file_dir / "src" / module_name])
-        print("")
-        print("")
-        print("")
 
         build_dir = Path(self.build_temp)
         self.announce(
@@ -137,7 +125,6 @@ class CMakeBuildExt(build_ext):
         extdir = Path(self.get_ext_fullpath(ext.name)).resolve().parent
         self.announce("Configuring cmake", level=3)
         cmake_args = ["-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=" + str(extdir)] + CMAKE_ARGS
-        call(["ls", "-la", lib_dir])
         cmd = ["cmake", f"-S{lib_dir}", f"-B{build_dir}"] + cmake_args
         self.spawn(cmd)
 

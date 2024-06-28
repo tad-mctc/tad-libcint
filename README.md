@@ -26,8 +26,8 @@
   <tr>
     <td>Status:</td>
     <td>
-      <a href="https://github.com/tad-mctc/tad-libcint/actions/workflows/python.yaml">
-        <img src="https://github.com/tad-mctc/tad-libcint/actions/workflows/python.yaml/badge.svg" alt="Test Status"/>
+      <a href="https://github.com/tad-mctc/tad-libcint/actions/workflows/ubuntu.yaml">
+        <img src="https://github.com/tad-mctc/tad-libcint/actions/workflows/ubuntu.yaml/badge.svg" alt="Tests Ubuntu"/>
       </a>
       <a href="https://github.com/tad-mctc/tad-libcint/actions/workflows/release.yaml">
         <img src="https://github.com/tad-mctc/tad-libcint/actions/workflows/release.yaml/badge.svg" alt="Build Status"/>
@@ -60,6 +60,8 @@ The project was heavily inspired by *[diffqc/dqc](https://github.com/diffqc/dqc)
 
 This interface was mainly written for the calculation of integrals within *[grimme-lab/dxtb](https://github.com/grimme-lab/dxtb)*.
 
+See [here](https://github.com/tad-mctc/libcint/blob/dxtb/README.rst) for the version of libcint
+
 ## Installation
 
 ### pip
@@ -81,7 +83,8 @@ git clone --recursive git@github.com:grimme-lab/tad-libcint.git
 cd tad-libcint
 ```
 
-The [libcint fork](https://github.com/tad-mctc/libcint/tree/dxtb) contains some additional integrals required for `dxtb`. Therefore, downloading from our fork is recommended.
+The [libcint fork](https://github.com/tad-mctc/libcint/tree/dxtb) contains additional integrals required for `dxtb` and removes unneccessary ones.
+Therefore, downloading from our fork is recommended.
 
 If you already have the repository, you can update the submodule with
 
