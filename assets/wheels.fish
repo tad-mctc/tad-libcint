@@ -21,7 +21,7 @@
 # environments are created with:
 # mamba create -n wheel-<version> --yes python=<version> auditwheel c-compiler fortran-compiler cmake meson numpy pip python-build pkgconfig patchelf unzip wheel
 
-set -l VERSIONS "38" "39" "310" "311"
+set -l VERSIONS "38" "39" "310" "311" "312"
 
 # Trap SIGINT and SIGTERM signals to exit the whole script
 function handle_exit
@@ -37,4 +37,7 @@ for VERSION in $VERSIONS
     auditwheel repair -w wheels --plat manylinux_2_12_x86_64 dist/*-cp$VERSION-cp$VERSION-linux_x86_64.whl
     conda deactivate
     rm -rf build/ dist/
+
+    echo ""
+    echo ""
 end
