@@ -78,7 +78,7 @@ You can also build the Python wheels from source.
 1. Get the repository (including libcint submodule).
 
 ```console
-git clone --recursive git@github.com:grimme-lab/tad-libcint.git
+git clone --recursive git@github.com:tad-mctc/tad-libcint.git
 cd tad-libcint
 ```
 
