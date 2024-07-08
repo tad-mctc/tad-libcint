@@ -44,6 +44,7 @@ jobs:
         shell: ${{ matrix.shell || 'bash -l {0}' }}
 
     env:
+      # https://github.com/actions/checkout/issues/1809
       ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
 
     steps:
