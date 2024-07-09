@@ -43,6 +43,10 @@ jobs:
       run:
         shell: ${{ matrix.shell || 'bash -l {0}' }}
 
+    env:
+      # https://github.com/actions/checkout/issues/1809
+      ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
+
     steps:
       # Check latest git version at https://github.com/search?q=org%3Aiusrepo+topic%3Arpm+git&s=updated&type=repositories
       - name: Install Latest Git
