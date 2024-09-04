@@ -93,7 +93,7 @@ jobs:
           auditwheel show dist/*.whl
           auditwheel repair -w wheels --plat ${{ env.plat }} dist/*.whl
         env:
-          plat: manylinux${{ matrix.python == '3.6' && '2010' || '_2_12' }}_x86_64
+          plat: manylinux2014_x86_64
 
       - name: Upload wheel as artifact
         uses: actions/upload-artifact@v3
