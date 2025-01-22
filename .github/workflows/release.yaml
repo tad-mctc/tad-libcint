@@ -85,6 +85,8 @@ jobs:
           meson
           ninja
           numpy
+          openblas
+          openblas-devel
           pip
           python-build
           pkgconfig

@@ -37,7 +37,7 @@ repos:
             --min-py-version,
             "3.8",
             --max-py-version,
-            "3.11",
+            "3.12",
           ]
 
   - repo: https://github.com/asottile/pyupgrade
@@ -58,3 +58,8 @@ repos:
     hooks:
       - id: black
         stages: [pre-commit]
+
+  - repo: https://github.com/woodruffw/zizmor-pre-commit
+    rev: v1.1.1
+    hooks:
+      - id: zizmor
