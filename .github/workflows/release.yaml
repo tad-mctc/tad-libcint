@@ -69,6 +69,8 @@ jobs:
       - name: Setup Python
         uses: mamba-org/setup-micromamba@v2
         with:
+          init-shell: bash
+          environment-name: py${{ matrix.python }}
           create-args: >-
             python=${{ matrix.python }}
             auditwheel
