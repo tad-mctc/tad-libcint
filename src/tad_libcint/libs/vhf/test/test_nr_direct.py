@@ -14,7 +14,6 @@
 # limitations under the License.
 
 import ctypes
-import os
 import unittest
 
 import _ctypes
