@@ -48,7 +48,7 @@ jobs:
 
     defaults:
       run:
-        shell: ${{ matrix.shell || 'bash -l {0}' }}
+        shell: bash -l {0}
 
     steps:
       - name: Install Latest Git
