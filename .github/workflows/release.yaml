@@ -67,37 +67,33 @@ jobs:
           submodules: 'recursive'
 
       - name: Setup Python
-        uses: mamba-org/setup-micromamba@v1
-
-      - name: Create environment
-        run: >-
-          mamba create -n wheel-${{ matrix.python }}
-          --yes
-          python=${{ matrix.python }}
-          auditwheel
-          c-compiler
-          cxx-compiler
-          fortran-compiler
-          cffi
-          cmake
-          make
-          meson
-          ninja
-          numpy
-          pip
-          python-build
-          pkgconfig
-          patchelf
-          unzip
-          wheel
+        uses: mamba-org/setup-micromamba@v2
+        with:
+          create-args: >-
+            python=${{ matrix.python }}
+            auditwheel
+            c-compiler
+            cxx-compiler
+            fortran-compiler
+            cffi
+            cmake
+            make
+            meson
+            ninja
+            numpy
+            pip
+            python-build
+            pkgconfig
+            patchelf
+            unzip
+            wheel
 
       - name: Build wheel (bdist)
         run: |
-          conda activate wheel-${{ matrix.python }}
           set -ex
           python -m build --wheel
           auditwheel show dist/*.whl
-          auditwheel repair -w wheels --plat ${{ env.plat }} dist/*.whl
+          auditwheel repair -w wheels --plat $plat dist/*.whl
         env:
           plat: manylinux2014_x86_64
 
@@ -113,6 +109,8 @@ jobs:
 
     runs-on: ubuntu-latest
 
+    environment: release
+
     permissions:
       contents: read
       id-token: write
@@ -127,14 +125,14 @@ jobs:
       - name: Publish to Test PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          user: __token__
-          password: ${{ secrets.TEST_PYPI_TOKEN }}
           repository-url: https://test.pypi.org/legacy/
 
   upload_pypi:
     needs: [sdist, wheel, upload_test_pypi]
 
     runs-on: ubuntu-latest
+
+    environment: release
 
     permissions:
       contents: read
@@ -149,6 +147,3 @@ jobs:
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          user: __token__
-          password: ${{ secrets.PYPI_TOKEN }}
