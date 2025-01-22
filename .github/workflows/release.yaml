@@ -15,11 +15,16 @@ on:
 
 jobs:
   sdist:
+    permissions:
+      contents: read
+
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
+          persist-credentials: false
           submodules: 'recursive'
 
       - name: Build source distribution (sdist)
@@ -33,19 +38,17 @@ jobs:
 
   wheel:
     runs-on: ubuntu-latest
-    container: condaforge/linux-anvil-cos7-x86_64
     strategy:
       fail-fast: false
       matrix:
         python: ['3.8', '3.9', '3.10', '3.11', '3.12']
+    
+    permissions:
+      contents: read
 
     defaults:
       run:
         shell: ${{ matrix.shell || 'bash -l {0}' }}
-
-    env:
-      # https://github.com/actions/checkout/issues/1809
-      ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
 
     steps:
       # Check latest git version at https://github.com/search?q=org%3Aiusrepo+topic%3Arpm+git&s=updated&type=repositories
@@ -59,9 +62,13 @@ jobs:
         run: git --version
 
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
+          persist-credentials: false
           submodules: 'recursive'
+
+      - name: Setup Python
+        uses: mamba-org/setup-micromamba@v1
 
       - name: Create environment
         run: >-
@@ -102,9 +109,15 @@ jobs:
           path: wheels/*.whl
 
 
-  upload_pypi:
-    needs: [wheel, sdist]
+  upload_test_pypi:
+    needs: [sdist, wheel]
+
     runs-on: ubuntu-latest
+  
+    permissions:
+      contents: read
+      id-token: write
+    
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     steps:
       - name: Download build artifacts
@@ -118,6 +131,22 @@ jobs:
           user: __token__
           password: ${{ secrets.TEST_PYPI_TOKEN }}
           repository-url: https://test.pypi.org/legacy/
+
+  upload_pypi:
+    needs: [sdist, wheel, upload_test_pypi]
+
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      id-token: write
+
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4.1.7
+        with:
+          path: dist
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
