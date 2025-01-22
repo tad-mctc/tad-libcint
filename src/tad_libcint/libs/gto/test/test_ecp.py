@@ -211,17 +211,17 @@ def type2_by_shell(mol, shls, ecpatm_id, ecpbas):
     ish, jsh = shls
 
     li = mol.bas_angular(ish)
-    npi = mol.bas_nprim(ish)
+    # npi = mol.bas_nprim(ish)
     nci = mol.bas_nctr(ish)
-    ai = mol.bas_exp(ish)
-    ci = mol._libcint_ctr_coeff(ish)
+    # ai = mol.bas_exp(ish)
+    # ci = mol._libcint_ctr_coeff(ish)
     icart = (li + 1) * (li + 2) // 2
 
     lj = mol.bas_angular(jsh)
-    npj = mol.bas_nprim(jsh)
+    # npj = mol.bas_nprim(jsh)
     ncj = mol.bas_nctr(jsh)
-    aj = mol.bas_exp(jsh)
-    cj = mol._libcint_ctr_coeff(jsh)
+    # aj = mol.bas_exp(jsh)
+    # cj = mol._libcint_ctr_coeff(jsh)
     jcart = (lj + 1) * (lj + 2) // 2
 
     rc = mol.atom_coord(ecpatm_id)
@@ -277,15 +277,15 @@ def so_by_shell(mol, shls, ecpatm_id, ecpbas):
     li = mol.bas_angular(ish)
     npi = mol.bas_nprim(ish)
     nci = mol.bas_nctr(ish)
-    ai = mol.bas_exp(ish)
-    ci = mol._libcint_ctr_coeff(ish)
+    # ai = mol.bas_exp(ish)
+    # ci = mol._libcint_ctr_coeff(ish)
     icart = (li + 1) * (li + 2) // 2
 
     lj = mol.bas_angular(jsh)
-    npj = mol.bas_nprim(jsh)
+    # npj = mol.bas_nprim(jsh)
     ncj = mol.bas_nctr(jsh)
-    aj = mol.bas_exp(jsh)
-    cj = mol._libcint_ctr_coeff(jsh)
+    # aj = mol.bas_exp(jsh)
+    # cj = mol._libcint_ctr_coeff(jsh)
     jcart = (lj + 1) * (lj + 2) // 2
 
     rc = mol.atom_coord(ecpatm_id)
@@ -565,7 +565,7 @@ class KnownValues(unittest.TestCase):
     def test_bessel(self):
         rs = radi.gauss_chebyshev(99)[0]
         bessel1 = numpy.empty(8)
-        for i, x in enumerate(rs):
+        for _, x in enumerate(rs):
             bessel0 = scipy.special.spherical_in(numpy.arange(7 + 1), x) * numpy.exp(-x)
             libecp.ECPsph_ine(
                 bessel1.ctypes.data_as(ctypes.c_void_p),
@@ -587,7 +587,7 @@ class KnownValues(unittest.TestCase):
         self.assertTrue(numpy.allclose(ws0, ws))
 
     def test_rad_part(self):
-        rs, ws = radi.gauss_chebyshev(99)
+        rs, _ = radi.gauss_chebyshev(99)
         ur0 = rad_part(mol, mol._ecpbas, rs)
         ur1 = numpy.empty_like(ur0)
         cache = numpy.empty(100000)

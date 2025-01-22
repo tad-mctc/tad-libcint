@@ -22,7 +22,6 @@ Setup for C Extension.
 """
 
 from pathlib import Path
-from subprocess import call
 
 from setuptools import Extension, setup
 from setuptools.command.build_ext import build_ext
