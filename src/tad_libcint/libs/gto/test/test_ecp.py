@@ -275,7 +275,7 @@ def so_by_shell(mol, shls, ecpatm_id, ecpbas):
     ish, jsh = shls
 
     li = mol.bas_angular(ish)
-    npi = mol.bas_nprim(ish)
+    # npi = mol.bas_nprim(ish)
     nci = mol.bas_nctr(ish)
     # ai = mol.bas_exp(ish)
     # ci = mol._libcint_ctr_coeff(ish)
