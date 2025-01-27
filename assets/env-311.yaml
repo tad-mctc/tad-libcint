@@ -21,12 +21,15 @@ channels:
   - pytorch
 dependencies:
   - auditwheel
-  - c-compiler
-  - cxx-compiler
-  - fortran-compiler
+  - c-compiler=1.5.2
+  - cxx-compiler=1.5.2
+  - fortran-compiler=1.5.2
   - cffi
   - cmake
   - git
+  - libgcc<14
+  - libgfortran<14
+  - libstdcxx<14
   - make
   - meson
   - ninja
@@ -36,8 +39,9 @@ dependencies:
   - pkgconfig
   - python-build
   - python==3.11
-  - pytorch>=1.11.0
+  - sysroot_linux-64=2.12
   - unzip
   - wheel
-  - pip:
-    - tad-mctc
+  # - pytorch>=1.11.0
+  # - pip:
+  #     - tad-mctc
