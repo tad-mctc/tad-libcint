@@ -27,6 +27,17 @@ markers = [
 # pythonpath = ["src"]
 
 
+[tool.cibuildwheel]
+build = "cp38-* cp39-* cp310-* cp311-* cp312-*"
+environment = { PIP_EXTRA_INDEX_URL="https://download.pytorch.org/whl/cpu" }
+manylinux-x86_64-image = "manylinux2014"
+skip = "*musllinux* pp*"
+
+[tool.cibuildwheel.linux]
+archs = ["x86_64"]
+before-build = ["yum install -y openblas-devel"]
+
+
 [tool.mypy]
 check_untyped_defs = true
 disallow_any_generics = true

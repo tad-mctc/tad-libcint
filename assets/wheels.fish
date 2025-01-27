@@ -17,11 +17,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
 # environments are created with:
-# mamba create -n wheel-<version> --yes python=<version> auditwheel c-compiler fortran-compiler cmake meson numpy pip python-build pkgconfig patchelf unzip wheel
-
-set -l VERSIONS "38" "39" "310" "311" "312"
+#
+# mamba create -n wheel-312 --yes python=3.12 auditwheel "c-compiler=1.5.2" "fortran-compiler=1.5.2" cmake meson numpy pip python-build pkgconfig patchelf "sysroot_linux-64=2.12" unzip wheel
 
 # Trap SIGINT and SIGTERM signals to exit the whole script
 function handle_exit
@@ -30,7 +28,21 @@ function handle_exit
 end
 trap handle_exit SIGINT SIGTERM
 
+set -l VERSIONS "38" "39" "310" "311" "312"
+
 for VERSION in $VERSIONS
+    if ! conda env list | grep "wheel-$VERSION" >/dev/null 2>/dev/null
+        echo "Creating wheel-$VERSION"
+
+        set -l python_version (string replace -r '^(.)(.*)$' '$1.$2' $VERSION)
+        mamba create -n "wheel-$VERSION" --yes "python=$python_version" auditwheel "c-compiler=1.5.2" "fortran-compiler=1.5.2" cmake "libgcc<14" "libgfortran<14" "libstdcxx<14" meson numpy pip python-build pkgconfig patchelf "sysroot_linux-64=2.12" unzip wheel
+    end
+
+    if test -f "wheels/tad_libcint-0.1.1-cp$VERSION-cp$VERSION-manylinux_2_12_x86_64.manylinux2010_x86_64.whl"
+        echo "Skipping wheel-$VERSION"
+        continue
+    end
+
     conda activate wheel-$VERSION
     echo "Activate wheel-$VERSION"
     python -m build --wheel

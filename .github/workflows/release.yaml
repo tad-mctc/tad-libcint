@@ -25,13 +25,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           persist-credentials: false
-          submodules: 'recursive'
+          submodules: "recursive"
 
       - name: Build source distribution (sdist)
         run: pipx run build --sdist
 
       - name: Upload source distribution as artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: tadlibcint-sdist
           path: dist/*.tar.gz
@@ -41,7 +41,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python: ['3.8', '3.9', '3.10', '3.11', '3.12']
+        python: ["3.8", "3.9", "3.10", "3.11", "3.12"]
 
     permissions:
       contents: read
@@ -64,7 +64,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           persist-credentials: false
-          submodules: 'recursive'
+          submodules: "recursive"
 
       - name: Setup Python
         uses: mamba-org/setup-micromamba@v2
@@ -74,11 +74,14 @@ jobs:
           create-args: >-
             python=${{ matrix.python }}
             auditwheel
-            c-compiler
-            cxx-compiler
-            fortran-compiler
+            c-compiler=1.5.2
+            cxx-compiler=1.5.2
+            fortran-compiler=1.5.2
             cffi
             cmake
+            libgcc<14
+            libgfortran<14
+            libstdcxx<14
             make
             meson
             ninja
@@ -87,6 +90,7 @@ jobs:
             python-build
             pkgconfig
             patchelf
+            sysroot_linux-64=2.12
             unzip
             wheel
 
@@ -97,14 +101,13 @@ jobs:
           auditwheel show dist/*.whl
           auditwheel repair -w wheels --plat $plat dist/*.whl
         env:
-          plat: manylinux2014_x86_64
+          plat: manylinux_2_12_x86_64 # 2010
 
       - name: Upload wheel as artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: tadlibcint-wheel-${{ matrix.python }}
           path: wheels/*.whl
-
 
   upload_test_pypi:
     needs: [sdist, wheel]
@@ -122,7 +125,7 @@ jobs:
       - name: Download build artifacts
         uses: actions/download-artifact@v4.1.7
         with:
-          path: dist
+          path: ${{ github.workspace }}
 
       - name: Publish to Test PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
@@ -145,7 +148,7 @@ jobs:
       - name: Download build artifacts
         uses: actions/download-artifact@v4.1.7
         with:
-          path: dist
+          path: ${{ github.workspace }}
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
