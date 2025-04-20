@@ -418,8 +418,9 @@ class LibcintWrapper:
                 AtomCGTOBasis(atomz=atomz, bases=new_bases, pos=pos)
             )
 
+        # Uncontracted wrapper does not work with the IndexHelper
         uncontr_wrapper = LibcintWrapper(
-            new_atombases, ihelp=self.ihelp, spherical=self.spherical
+            new_atombases, ihelp=None, spherical=self.spherical
         )
 
         # get the mapping uncontracted ao to the contracted ao
