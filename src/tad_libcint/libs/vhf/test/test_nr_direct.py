@@ -25,7 +25,11 @@ libcvhf2 = lib.load_library("libcvhf")
 mol = gto.Mole()
 mol.verbose = 0
 mol.output = None  #'out_h2o'
-mol.atom = [["O", (0.0, 0.0, 0.0)], [1, (0.0, -0.757, 0.587)], [1, (0.0, 0.757, 0.587)]]
+mol.atom = [
+    ["O", (0.0, 0.0, 0.0)],
+    [1, (0.0, -0.757, 0.587)],
+    [1, (0.0, 0.757, 0.587)],
+]
 
 mol.basis = "cc-pvdz"
 
@@ -67,7 +71,9 @@ def runjk(dm1, ncomp, intorname, filldot, *namejk):
         f1 = ctypes.c_void_p(_ctypes.dlsym(libcvhf2._handle, symb))
         for j in range(n_dm):
             dmsptr[i * n_dm + j] = dm1[j].ctypes.data_as(ctypes.c_void_p)
-            vjkptr[i * n_dm + j] = vjk[i, j * ncomp].ctypes.data_as(ctypes.c_void_p)
+            vjkptr[i * n_dm + j] = vjk[i, j * ncomp].ctypes.data_as(
+                ctypes.c_void_p
+            )
             fjk[i * n_dm + j] = f1
     shls_slice = (ctypes.c_int * 8)(*([0, mol.nbas] * 4))
 
@@ -114,7 +120,13 @@ def makeri(fname, comp):
                         fname, (i, j, k, l), mol._atm, mol._bas, mol._env, comp
                     )
                     di, dj, dk, dl = buf.shape[1:]
-                    eri[:, ip : ip + di, jp : jp + dj, kp : kp + dk, lp : lp + dl] = buf
+                    eri[
+                        :,
+                        ip : ip + di,
+                        jp : jp + dj,
+                        kp : kp + dk,
+                        lp : lp + dl,
+                    ] = buf
                     lp += dl
                 kp += dk
             jp += dj
@@ -130,14 +142,24 @@ class KnowValues(unittest.TestCase):
         dm1 = dm1 + dm1.T
         vj0, vk0 = scf._vhf.incore(rhf._eri, dm1, 1)
         vj1, vk1 = runjk(
-            dm1, 1, "int2e_sph", "CVHFdot_nrs8", "CVHFnrs8_ji_s1kl", "CVHFnrs8_jk_s1il"
+            dm1,
+            1,
+            "int2e_sph",
+            "CVHFdot_nrs8",
+            "CVHFnrs8_ji_s1kl",
+            "CVHFnrs8_jk_s1il",
         )
         self.assertTrue(numpy.allclose(vj0, vj1))
         self.assertTrue(numpy.allclose(vk0, vk1))
 
         dm1 = numpy.array((dm1, dm1))
         vj1, vk1 = runjk(
-            dm1, 1, "int2e_sph", "CVHFdot_nrs8", "CVHFnrs8_ji_s1kl", "CVHFnrs8_jk_s1il"
+            dm1,
+            1,
+            "int2e_sph",
+            "CVHFdot_nrs8",
+            "CVHFnrs8_ji_s1kl",
+            "CVHFnrs8_jk_s1il",
         )
         self.assertTrue(numpy.allclose(vj0, vj1[0]))
         self.assertTrue(numpy.allclose(vk0, vk1[0]))
@@ -149,13 +171,23 @@ class KnowValues(unittest.TestCase):
         vj0 = numpy.einsum("ijkl,kl->ij", eri1, dm1)
         vk0 = numpy.einsum("ijkl,jk->il", eri1, dm1)
         vj1, vj2 = runjk(
-            dm1, 1, "int2e_sph", "CVHFdot_nrs4", "CVHFnrs4_ji_s1kl", "CVHFnrs4_jk_s1il"
+            dm1,
+            1,
+            "int2e_sph",
+            "CVHFdot_nrs4",
+            "CVHFnrs4_ji_s1kl",
+            "CVHFnrs4_jk_s1il",
         )
         self.assertTrue(numpy.allclose(vj0, vj1))
         self.assertTrue(numpy.allclose(vk0, vj2))
 
         vk1 = runjk(
-            dm1, 1, "int2e_sph", "CVHFdot_nrs4", "CVHFnrs4_li_s1kj", "CVHFnrs4_jk_s1il"
+            dm1,
+            1,
+            "int2e_sph",
+            "CVHFdot_nrs4",
+            "CVHFnrs4_li_s1kj",
+            "CVHFnrs4_jk_s1il",
         )
         self.assertTrue(numpy.allclose(vk0, vk1[0]))
         self.assertTrue(numpy.allclose(vk0, vk1[1]))
@@ -297,7 +329,12 @@ class KnowValues(unittest.TestCase):
         dm1 = dm1 + dm1.T
         vj0, vk0 = scf._vhf.incore(rhf._eri, dm1, 1)
         vj1, vk1 = runjks2(
-            dm1, 1, "int2e_sph", "CVHFdot_nrs8", "CVHFnrs8_ji_s2kl", "CVHFnrs8_jk_s2il"
+            dm1,
+            1,
+            "int2e_sph",
+            "CVHFdot_nrs8",
+            "CVHFnrs8_ji_s2kl",
+            "CVHFnrs8_jk_s2il",
         )
         self.assertTrue(numpy.allclose(vj0, vj1))
         self.assertTrue(numpy.allclose(vk0, vk1))
@@ -306,13 +343,23 @@ class KnowValues(unittest.TestCase):
         vj0 = numpy.einsum("ijkl,kl->ij", eri1, dm1)
         vk0 = numpy.einsum("ijkl,jk->il", eri1, dm1)
         vj1, vj2 = runjks2(
-            dm1, 1, "int2e_sph", "CVHFdot_nrs4", "CVHFnrs4_ji_s2kl", "CVHFnrs4_jk_s2il"
+            dm1,
+            1,
+            "int2e_sph",
+            "CVHFdot_nrs4",
+            "CVHFnrs4_ji_s2kl",
+            "CVHFnrs4_jk_s2il",
         )
         self.assertTrue(numpy.allclose(vj0, vj1))
         self.assertTrue(numpy.allclose(vk0, vj2))
 
         vj1, vk1 = runjks2(
-            dm1, 1, "int2e_sph", "CVHFdot_nrs4", "CVHFnrs4_li_s2kj", "CVHFnrs4_jk_s2il"
+            dm1,
+            1,
+            "int2e_sph",
+            "CVHFdot_nrs4",
+            "CVHFnrs4_li_s2kj",
+            "CVHFnrs4_jk_s2il",
         )
         self.assertTrue(numpy.allclose(vk0, vj1))
         self.assertTrue(numpy.allclose(vk0, vk1))
@@ -382,7 +429,12 @@ class KnowValues(unittest.TestCase):
 
         vj0, vk0 = scf._vhf.incore(rhf._eri, dm1, 1)
         vj1, vk1 = runjk(
-            dm1, 1, "int2e_sph", "CVHFdot_nrs8", "CVHFnrs8_ji_s2kl", "CVHFnrs8_jk_s2il"
+            dm1,
+            1,
+            "int2e_sph",
+            "CVHFdot_nrs8",
+            "CVHFnrs8_ji_s2kl",
+            "CVHFnrs8_jk_s2il",
         )
         vj1 = lib.hermi_triu(vj1, 1)
         vk1 = lib.hermi_triu(vk1, 1)

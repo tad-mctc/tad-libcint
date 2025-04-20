@@ -205,16 +205,24 @@ class LibcintWrapper:
             )
         else:
             if spherical is True:
-                cs = torch.cumsum(ihelp.orbitals_per_shell, -1)[-1].unsqueeze(-1)
+                cs = torch.cumsum(ihelp.orbitals_per_shell, -1)[-1].unsqueeze(
+                    -1
+                )
                 shell_to_aoloc = torch.cat([ihelp.orbital_index, cs])
-                self._shell_to_aoloc = tensor_to_numpy(shell_to_aoloc, dtype=np.int32)
+                self._shell_to_aoloc = tensor_to_numpy(
+                    shell_to_aoloc, dtype=np.int32
+                )
 
                 self._ao_to_shell = ihelp.orbitals_to_shell
                 self._ao_to_atom = ihelp.orbitals_to_atom
             else:
-                cs = torch.cumsum(ihelp.orbitals_per_shell_cart, -1)[-1].unsqueeze(-1)
+                cs = torch.cumsum(ihelp.orbitals_per_shell_cart, -1)[
+                    -1
+                ].unsqueeze(-1)
                 shell_to_aoloc = torch.cat([ihelp.orbital_index_cart, cs])
-                self._shell_to_aoloc = tensor_to_numpy(shell_to_aoloc, dtype=np.int32)
+                self._shell_to_aoloc = tensor_to_numpy(
+                    shell_to_aoloc, dtype=np.int32
+                )
 
                 self._ao_to_shell = ihelp.orbitals_to_shell_cart
                 self._ao_to_atom = ihelp.orbitals_to_atom_cart
@@ -273,7 +281,11 @@ class LibcintWrapper:
     def params(self) -> tuple[Tensor, Tensor, Tensor]:
         # returns all the parameters of this object
         # this shouldn't change in the sliced wrapper
-        return self._allcoeffs_params, self._allalphas_params, self._allpos_params
+        return (
+            self._allcoeffs_params,
+            self._allalphas_params,
+            self._allpos_params,
+        )
 
     @property
     def shell_idxs(self) -> tuple[int, int]:
@@ -369,9 +381,18 @@ class LibcintWrapper:
 
     @memoize_method
     def get_uncontracted_wrapper(self) -> tuple[LibcintWrapper, Tensor]:
-        # returns the uncontracted LibcintWrapper as well as the mapping from
-        # uncontracted atomic orbital (relative index) to the relative index
-        # of the atomic orbital
+        """
+        Create a :class:`LibcintWrapper` object for the uncontracted basis set.
+
+        This is used for the backward calculation of the integrals.
+
+        Returns
+        -------
+        tuple[LibcintWrapper, Tensor]
+            The uncontracted :class:`LibcintWrapper` object and the mapping from
+            uncontracted atomic orbital (relative index) to the relative index
+            of the atomic orbital.
+        """
         new_atombases = []
         for atombasis in self.atombases:
             atomz = atombasis.atomz
@@ -385,12 +406,18 @@ class LibcintWrapper:
                 new_bases.extend(
                     [
                         CGTOBasis(
-                            angmom, alpha[None], coeff[None], normalized=normalized
+                            angmom,
+                            alpha[None],
+                            coeff[None],
+                            normalized=normalized,
                         )
                         for (alpha, coeff) in zip(alphas, coeffs)
                     ]
                 )
-            new_atombases.append(AtomCGTOBasis(atomz=atomz, bases=new_bases, pos=pos))
+            new_atombases.append(
+                AtomCGTOBasis(atomz=atomz, bases=new_bases, pos=pos)
+            )
+
         uncontr_wrapper = LibcintWrapper(
             new_atombases, ihelp=self.ihelp, spherical=self.spherical
         )
@@ -401,7 +428,9 @@ class LibcintWrapper:
         # iterate over shells
         for i in range(len(self)):
             nao = self._nao_at_shell(i)
-            uao2ao += list(range(idx_ao, idx_ao + nao)) * self.ngauss_at_shell[i]
+            uao2ao += (
+                list(range(idx_ao, idx_ao + nao)) * self.ngauss_at_shell[i]
+            )
             idx_ao += nao
         uao2ao_res = torch.tensor(uao2ao, dtype=torch.long, device=self.device)
         return uncontr_wrapper, uao2ao_res

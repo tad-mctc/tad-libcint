@@ -33,7 +33,14 @@ mol = gto.M(
 
 
 def eval_gto(
-    mol, eval_name, coords, comp=1, shls_slice=None, non0tab=None, ao_loc=None, out=None
+    mol,
+    eval_name,
+    coords,
+    comp=1,
+    shls_slice=None,
+    non0tab=None,
+    ao_loc=None,
+    out=None,
 ):
     atm = numpy.asarray(mol._atm, dtype=numpy.int32, order="C")
     bas = numpy.asarray(mol._bas, dtype=numpy.int32, order="C")
@@ -50,7 +57,9 @@ def eval_gto(
     sh0, sh1 = shls_slice
     nao = ao_loc[sh1] - ao_loc[sh0]
     if "spinor" in eval_name:
-        ao = numpy.ndarray((2, comp, nao, ngrids), dtype=numpy.complex128, buffer=out)
+        ao = numpy.ndarray(
+            (2, comp, nao, ngrids), dtype=numpy.complex128, buffer=out
+        )
     else:
         ao = numpy.ndarray((comp, nao, ngrids), buffer=out)
 
@@ -178,10 +187,18 @@ for i in range(nh):
     bas[i + nh, PTR_EXP] = bas[i, PTR_EXP] + n
     bas[i + nh, PTR_COEFF] = bas[i, PTR_COEFF] + n
     env[bas[i + nh, PTR_COEFF]] /= 2 * env[bas[i, PTR_EXP]]
-env[bas[5, PTR_COEFF] + 0] = env[bas[1, PTR_COEFF] + 0] / (2 * env[bas[1, PTR_EXP] + 0])
-env[bas[5, PTR_COEFF] + 1] = env[bas[1, PTR_COEFF] + 1] / (2 * env[bas[1, PTR_EXP] + 1])
-env[bas[5, PTR_COEFF] + 2] = env[bas[1, PTR_COEFF] + 2] / (2 * env[bas[1, PTR_EXP] + 0])
-env[bas[5, PTR_COEFF] + 3] = env[bas[1, PTR_COEFF] + 3] / (2 * env[bas[1, PTR_EXP] + 1])
+env[bas[5, PTR_COEFF] + 0] = env[bas[1, PTR_COEFF] + 0] / (
+    2 * env[bas[1, PTR_EXP] + 0]
+)
+env[bas[5, PTR_COEFF] + 1] = env[bas[1, PTR_COEFF] + 1] / (
+    2 * env[bas[1, PTR_EXP] + 1]
+)
+env[bas[5, PTR_COEFF] + 2] = env[bas[1, PTR_COEFF] + 2] / (
+    2 * env[bas[1, PTR_EXP] + 0]
+)
+env[bas[5, PTR_COEFF] + 3] = env[bas[1, PTR_COEFF] + 3] / (
+    2 * env[bas[1, PTR_EXP] + 1]
+)
 
 mol1 = gto.Mole()
 mol1._atm = atm
@@ -246,16 +263,22 @@ class KnownValues(unittest.TestCase):
 
     def test_spinor(self):
         ao = eval_gto(mol, "GTOval_spinor", coords)
-        self.assertAlmostEqual(lib.fp(ao), -4.5941099464020079 + 5.9444339000526707j, 9)
+        self.assertAlmostEqual(
+            lib.fp(ao), -4.5941099464020079 + 5.9444339000526707j, 9
+        )
 
     def test_sp_spinor(self):
         ao = eval_gto(mol, "GTOval_sp_spinor", coords)
-        self.assertAlmostEqual(lib.fp(ao), 26.212937567473656 - 68.970076521029782j, 9)
+        self.assertAlmostEqual(
+            lib.fp(ao), 26.212937567473656 - 68.970076521029782j, 9
+        )
 
         numpy.random.seed(1)
         rs = numpy.random.random((213, 3))
         rs = (rs - 0.5) ** 2 * 30
-        ao1 = eval_gto(mol1, "GTOval_spinor", rs, shls_slice=(0, mol1.nbas // 2))
+        ao1 = eval_gto(
+            mol1, "GTOval_spinor", rs, shls_slice=(0, mol1.nbas // 2)
+        )
         ao2 = eval_gto(
             mol1, "GTOval_sp_spinor", rs, shls_slice=(mol1.nbas // 2, mol1.nbas)
         )
@@ -286,11 +309,15 @@ class KnownValues(unittest.TestCase):
 
     def test_ip_spinor(self):
         ao = eval_gto(mol, "GTOval_ip_spinor", coords, comp=3)
-        self.assertAlmostEqual(lib.fp(ao), -52.516545034166775 + 24.765350351395604j, 9)
+        self.assertAlmostEqual(
+            lib.fp(ao), -52.516545034166775 + 24.765350351395604j, 9
+        )
 
     def test_ipsp_spinor(self):
         ao = eval_gto(mol, "GTOval_ipsp_spinor", coords, comp=3)
-        self.assertAlmostEqual(lib.fp(ao), -159.94403505490939 + 400.80148912086418j, 9)
+        self.assertAlmostEqual(
+            lib.fp(ao), -159.94403505490939 + 400.80148912086418j, 9
+        )
 
         numpy.random.seed(1)
         rs = numpy.random.random((213, 3))
@@ -322,11 +349,15 @@ H  0.  0.  1.3""",
         j3c = mol1.intor("int1e_grids", grids=grids)
         self.assertAlmostEqual(abs(j3c - ref).max(), 0, 12)
 
-        ref = df.incore.aux_e2(mol1, fmol, intor="int3c2e_cart").transpose(2, 0, 1)
+        ref = df.incore.aux_e2(mol1, fmol, intor="int3c2e_cart").transpose(
+            2, 0, 1
+        )
         j3c = mol1.intor("int1e_grids_cart", grids=grids)
         self.assertAlmostEqual(abs(j3c - ref).max(), 0, 12)
 
-        ref = df.incore.aux_e2(mol1, fmol, intor="int3c2e_spinor").transpose(2, 0, 1)
+        ref = df.incore.aux_e2(mol1, fmol, intor="int3c2e_spinor").transpose(
+            2, 0, 1
+        )
         j3c = mol1.intor("int1e_grids_spinor", grids=grids)
         self.assertAlmostEqual(abs(j3c - ref).max(), 0, 12)
 
@@ -343,32 +374,40 @@ H  0.  0.  1.3""",
         fmol = gto.fakemol_for_charges(grids)
 
         with mol1.with_range_coulomb(0.8):
-            ref = df.incore.aux_e2(mol1, fmol, intor="int3c2e").transpose(2, 0, 1)
+            ref = df.incore.aux_e2(mol1, fmol, intor="int3c2e").transpose(
+                2, 0, 1
+            )
             j3c = mol1.intor("int1e_grids", grids=grids)
             self.assertAlmostEqual(abs(j3c - ref).max(), 0, 12)
 
-            ref = df.incore.aux_e2(mol1, fmol, intor="int3c2e_cart").transpose(2, 0, 1)
+            ref = df.incore.aux_e2(mol1, fmol, intor="int3c2e_cart").transpose(
+                2, 0, 1
+            )
             j3c = mol1.intor("int1e_grids_cart", grids=grids)
             self.assertAlmostEqual(abs(j3c - ref).max(), 0, 12)
 
-            ref = df.incore.aux_e2(mol1, fmol, intor="int3c2e_spinor").transpose(
-                2, 0, 1
-            )
+            ref = df.incore.aux_e2(
+                mol1, fmol, intor="int3c2e_spinor"
+            ).transpose(2, 0, 1)
             j3c = mol1.intor("int1e_grids_spinor", grids=grids)
             self.assertAlmostEqual(abs(j3c - ref).max(), 0, 12)
 
         with mol1.with_range_coulomb(-0.8):
-            ref = df.incore.aux_e2(mol1, fmol, intor="int3c2e").transpose(2, 0, 1)
+            ref = df.incore.aux_e2(mol1, fmol, intor="int3c2e").transpose(
+                2, 0, 1
+            )
             j3c = mol1.intor("int1e_grids", grids=grids)
             self.assertAlmostEqual(abs(j3c - ref).max(), 0, 12)
 
-            ref = df.incore.aux_e2(mol1, fmol, intor="int3c2e_cart").transpose(2, 0, 1)
+            ref = df.incore.aux_e2(mol1, fmol, intor="int3c2e_cart").transpose(
+                2, 0, 1
+            )
             j3c = mol1.intor("int1e_grids_cart", grids=grids)
             self.assertAlmostEqual(abs(j3c - ref).max(), 0, 12)
 
-            ref = df.incore.aux_e2(mol1, fmol, intor="int3c2e_spinor").transpose(
-                2, 0, 1
-            )
+            ref = df.incore.aux_e2(
+                mol1, fmol, intor="int3c2e_spinor"
+            ).transpose(2, 0, 1)
             j3c = mol1.intor("int1e_grids_spinor", grids=grids)
             self.assertAlmostEqual(abs(j3c - ref).max(), 0, 12)
 
@@ -376,7 +415,9 @@ H  0.  0.  1.3""",
         ngrids = 201
         grids = numpy.random.random((ngrids, 3)) * 12 - 5
         fmol = gto.fakemol_for_charges(grids)
-        ref = df.incore.aux_e2(mol1, fmol, intor="int3c2e_ip1").transpose(0, 3, 1, 2)
+        ref = df.incore.aux_e2(mol1, fmol, intor="int3c2e_ip1").transpose(
+            0, 3, 1, 2
+        )
         j3c = mol1.intor("int1e_grids_ip", grids=grids)
         self.assertAlmostEqual(abs(j3c - ref).max(), 0, 12)
 
@@ -386,9 +427,9 @@ H  0.  0.  1.3""",
         j3c = mol1.intor("int1e_grids_ip_cart", grids=grids)
         self.assertAlmostEqual(abs(j3c - ref).max(), 0, 12)
 
-        ref = df.incore.aux_e2(mol1, fmol, intor="int3c2e_ip1_spinor").transpose(
-            0, 3, 1, 2
-        )
+        ref = df.incore.aux_e2(
+            mol1, fmol, intor="int3c2e_ip1_spinor"
+        ).transpose(0, 3, 1, 2)
         j3c = mol1.intor("int1e_grids_ip_spinor", grids=grids)
         self.assertAlmostEqual(abs(j3c - ref).max(), 0, 12)
 
@@ -396,9 +437,9 @@ H  0.  0.  1.3""",
         ngrids = 201
         grids = numpy.random.random((ngrids, 3)) * 12 - 5
         fmol = gto.fakemol_for_charges(grids)
-        ref = df.r_incore.aux_e2(mol, fmol, intor="int3c2e_spsp1_spinor").transpose(
-            2, 0, 1
-        )
+        ref = df.r_incore.aux_e2(
+            mol, fmol, intor="int3c2e_spsp1_spinor"
+        ).transpose(2, 0, 1)
         j3c = mol.intor("int1e_grids_spvsp_spinor", grids=grids)
         self.assertAlmostEqual(abs(j3c - ref).max(), 0, 11)
 

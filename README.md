@@ -63,7 +63,7 @@ This interface was mainly written for the calculation of integrals within *[grim
 
 ## Installation
 
-### pip
+### pip <a href="https://pypi.org/project/tad-libcint/"><img src="https://img.shields.io/pypi/v/tad-libcint" alt="PyPI Version"></a> <a href="https://pypi.org/project/tad-libcint/"><img src="https://img.shields.io/pypi/dm/tad-libcint?color=orange" alt="PyPI Downloads"></a>
 
 The `tad-libcint` package can be obtained from pip.
 
@@ -115,6 +115,24 @@ auditwheel repair -w wheels --plat manylinux_2_12_x86_64 dist/*-cp310-cp310-linu
 ```console
 pip install .
 ```
+
+## Compatibility <img src="https://img.shields.io/badge/OS-Linux_only-black.svg" alt="Linux only">
+
+| PyTorch \ Python | 3.8                | 3.9                | 3.10               | 3.11               | 3.12               |
+|------------------|--------------------|--------------------|--------------------|--------------------|--------------------|
+| 1.11.0           | :white_check_mark: | :white_check_mark: | :x:                | :x:                | :x:                |
+| 1.12.1           | :white_check_mark: | :white_check_mark: | :white_check_mark: | :x:                | :x:                |
+| 1.13.1           | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :x:                |
+| 2.0.1            | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :x:                |
+| 2.1.2            | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :x:                |
+| 2.2.2            | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
+| 2.3.1            | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
+| 2.4.1            | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
+| 2.5.1            | :x:                | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
+| 2.6.0            | :x:                | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
+
+Note that only the latest bug fix version is listed, but all preceding bug fix minor versions are supported.
+For example, although only version 2.2.2 is listed, version 2.2.0 and 2.2.1 are also supported.
 
 
 ## Development
