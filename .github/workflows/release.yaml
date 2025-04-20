@@ -132,10 +132,18 @@ jobs:
       - name: Show downloaded artifacts
         run: ls -lcahFR --color=auto dist
 
+      - name: Check Python version
+        run: |
+          name=$(python -c 'import sys; print(f"cp{sys.version_info.major}{sys.version_info.minor}")')
+          echo "PY_TAG=$name" >> "$GITHUB_ENV"
+          echo "PY_TAG is set to '${name}'."
+
       - name: Install wheel
         run: |
           pip install torch --index-url https://download.pytorch.org/whl/cpu
-          pip install dist/*.whl
+          pip install dist/*${PY_TAG}-${PY_TAG}*.whl
+        env:
+          PY_TAG: ${{ env.PY_TAG }}
 
       - name: Determine package name
         run: |
