@@ -67,7 +67,7 @@ jobs:
           submodules: "recursive"
 
       - name: Setup Python
-        uses: mamba-org/setup-micromamba@v2
+        uses: mamba-org/setup-micromamba@0dea6379afdaffa5d528b3d1dabc45da37f443fc # v2.0.4
         with:
           init-shell: bash
           environment-name: py${{ matrix.python }}
@@ -128,7 +128,7 @@ jobs:
           path: ${{ github.workspace }}
 
       - name: Publish to Test PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@76f52bc884231f62b9a034ebfe128415bbaabdfc # v.1.12.4
         with:
           repository-url: https://test.pypi.org/legacy/
 
@@ -151,4 +151,4 @@ jobs:
           path: ${{ github.workspace }}
 
       - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@76f52bc884231f62b9a034ebfe128415bbaabdfc # v.1.12.4

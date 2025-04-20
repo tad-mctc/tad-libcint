@@ -65,10 +65,8 @@ class BaseInt2c(torch.autograd.Function):
         # gradient for all atomic positions
         grad_allposs: Tensor | None = None
         if allposs.requires_grad:
-            # grad_allposs = torch.zeros_like(allposs)  # (natom, ndim)
-            grad_allpossT = torch.zeros_like(allposs).transpose(
-                -2, -1
-            )  # (ndim, natom)
+            # (ndim, natom)
+            grad_allpossT = torch.zeros_like(allposs).transpose(-2, -1)
 
             # get the integrals required for the derivatives
             sname_derivs = [
