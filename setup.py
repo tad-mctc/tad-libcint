@@ -104,11 +104,14 @@ class CMakeBuildExt(build_ext):
 
         build_dir = Path(self.build_temp)
         self.announce(
-            f"Compiling libraries from PySCF from {lib_dir} to {build_dir}", level=3
+            f"Compiling libraries from PySCF from {lib_dir} to {build_dir}",
+            level=3,
         )
         self.build_cmake(ext, lib_dir, build_dir)
 
-    def build_cmake(self, ext: Extension, lib_dir: Path, build_dir: Path) -> None:
+    def build_cmake(
+        self, ext: Extension, lib_dir: Path, build_dir: Path
+    ) -> None:
         """
         Build an extension with CMake.
 
@@ -123,7 +126,9 @@ class CMakeBuildExt(build_ext):
         """
         extdir = Path(self.get_ext_fullpath(ext.name)).resolve().parent
         self.announce("Configuring cmake", level=3)
-        cmake_args = ["-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=" + str(extdir)] + CMAKE_ARGS
+        cmake_args = [
+            "-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=" + str(extdir)
+        ] + CMAKE_ARGS
         cmd = ["cmake", f"-S{lib_dir}", f"-B{build_dir}"] + cmake_args
         self.spawn(cmd)
 

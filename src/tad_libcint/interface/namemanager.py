@@ -166,9 +166,13 @@ class IntorNameManager:
         if int_type == "int1e":
             return f"GTO_ft_{self._shortname}_{cartsph}"
 
-        raise NotImplementedError(f"FT integral for {int_type} not implemented.")
+        raise NotImplementedError(
+            f"FT integral for {int_type} not implemented."
+        )
 
-    def get_intgl_deriv_namemgr(self, derivop: str, ibasis: int) -> IntorNameManager:
+    def get_intgl_deriv_namemgr(
+        self, derivop: str, ibasis: int
+    ) -> IntorNameManager:
         """
         Get the name manager of a new integral when derivop is applied to
         ibasis-th basis.
@@ -193,7 +197,9 @@ class IntorNameManager:
         sname = self.join_name(self._int_type, self._rawop, ops)
         return IntorNameManager(self._int_type, sname)
 
-    def get_intgl_deriv_newaxispos(self, derivop: str, ibasis: int) -> None | int:
+    def get_intgl_deriv_newaxispos(
+        self, derivop: str, ibasis: int
+    ) -> None | int:
         """
         Get the new axis position in the new integral name when derivop is applied
 
@@ -287,7 +293,9 @@ class IntorNameManager:
         else:
             raise self._nbasis_error(nbasis)
 
-        def _swap(p: list[list[str]], path: list[tuple[int, int]]) -> list[list[str]]:
+        def _swap(
+            p: list[list[str]], path: list[tuple[int, int]]
+        ) -> list[list[str]]:
             # swap the pattern according to the given transpose path
             r = p[:]  # make a copy
             for i0, i1 in path:
@@ -301,7 +309,9 @@ class IntorNameManager:
                 return transpose_path
         return None
 
-    def get_comp_permute_path(self, transpose_path: list[tuple[int, int]]) -> list[int]:
+    def get_comp_permute_path(
+        self, transpose_path: list[tuple[int, int]]
+    ) -> list[int]:
         """
         Get the component permute path given the basis transpose path.
 
@@ -348,7 +358,9 @@ class IntorNameManager:
         return dim_pos_flat
 
     @classmethod
-    def split_name(cls, int_type: str, shortname: str) -> tuple[str, list[list[str]]]:
+    def split_name(
+        cls, int_type: str, shortname: str
+    ) -> tuple[str, list[list[str]]]:
         """
         Split the shortname into operator per basis.
 
@@ -401,7 +413,9 @@ class IntorNameManager:
         return rawsname, ops
 
     @classmethod
-    def join_name(cls, int_type: str, rawsname: str, ops: list[list[str]]) -> str:
+    def join_name(
+        cls, int_type: str, rawsname: str, ops: list[list[str]]
+    ) -> str:
         """
         Join the raw shortname and list of basis operators into a shortname.
 
@@ -431,7 +445,13 @@ class IntorNameManager:
         if nbasis == 2:
             return ops_str[0] + rawsname + ops_str[1]
         if nbasis == 3:
-            return ops_str[0] + cls.sep_name[0] + ops_str[1] + rawsname + ops_str[2]
+            return (
+                ops_str[0]
+                + cls.sep_name[0]
+                + ops_str[1]
+                + rawsname
+                + ops_str[2]
+            )
         if nbasis == 4:
             return (
                 ops_str[0]

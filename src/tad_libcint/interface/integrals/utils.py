@@ -67,7 +67,9 @@ def get_integrals(
                 twrappers = _swap_list(wrappers, transpose_path)
                 if twrappers == wrappers:
                     res_i = _transpose(res[j], transpose_path)
-                    permute_path = int_nmgrs[j].get_comp_permute_path(transpose_path)
+                    permute_path = int_nmgrs[j].get_comp_permute_path(
+                        transpose_path
+                    )
                     res_i = res_i.permute(*permute_path)
                     break
 
@@ -77,7 +79,9 @@ def get_integrals(
                 elif int_avail[j]:
                     res_i = int_fcn(twrappers, int_nmgrs[j])
                     res_i = _transpose(res_i, transpose_path)
-                    permute_path = int_nmgrs[j].get_comp_permute_path(transpose_path)
+                    permute_path = int_nmgrs[j].get_comp_permute_path(
+                        transpose_path
+                    )
                     res_i = res_i.permute(*permute_path)
                     break
 
@@ -120,11 +124,16 @@ def _swap_list(a: list, swaps: list[tuple[int, int]]) -> list:
     # swap the elements according to the swaps input
     res = copy.copy(a)  # shallow copy
     for idxs in swaps:
-        res[idxs[0]], res[idxs[1]] = res[idxs[1]], res[idxs[0]]  # swap the elements
+        res[idxs[0]], res[idxs[1]] = (
+            res[idxs[1]],
+            res[idxs[0]],
+        )  # swap the elements
     return res
 
 
-def gather_at_dims(inp: Tensor, mapidxs: list[Tensor], dims: list[int]) -> Tensor:
+def gather_at_dims(
+    inp: Tensor, mapidxs: list[Tensor], dims: list[int]
+) -> Tensor:
     # expand inp in the dimension dim by gathering values based on the given
     # mapping indices
 

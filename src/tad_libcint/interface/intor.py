@@ -68,7 +68,9 @@ class Intor:
         # get the operator
         opname = int_nmgr.get_intgl_name(wrapper0.spherical)
         self.op = getattr(CINT, opname)
-        self.optimizer = _get_intgl_optimizer(opname, self.atm, self.bas, self.env)
+        self.optimizer = _get_intgl_optimizer(
+            opname, self.atm, self.bas, self.env
+        )
 
         # prepare the output
         comp_shape = int_nmgr.get_intgl_components_shape()
@@ -110,7 +112,9 @@ class Intor:
         """
         drv = CGTO.GTOint2c
         outshape = self.outshape
-        out = np.empty((*outshape[:-2], outshape[-1], outshape[-2]), dtype=np.float64)
+        out = np.empty(
+            (*outshape[:-2], outshape[-1], outshape[-2]), dtype=np.float64
+        )
         drv(
             self.op,
             out.ctypes.data_as(ctypes.c_void_p),

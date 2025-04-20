@@ -50,7 +50,9 @@ class S1Symmetry(BaseSymmetry):
         """
         return "s1"
 
-    def reconstruct_array(self, arr: np.ndarray, _: tuple[int, ...]) -> np.ndarray:
+    def reconstruct_array(
+        self, arr: np.ndarray, _: tuple[int, ...]
+    ) -> np.ndarray:
         """
         Reconstruct the full array from the reduced symmetrized array.
         """

@@ -129,7 +129,10 @@ def type1_by_shell(mol, shls, ecpatm_id, ecpbas):
             for ic in range(nci):
                 for jc in range(ncj):
                     rad_ang_all[ic, jc] += (
-                        rad_ang * cei[ip, ic] * cej[jp, jc] * (4 * numpy.pi) ** 2
+                        rad_ang
+                        * cei[ip, ic]
+                        * cej[jp, jc]
+                        * (4 * numpy.pi) ** 2
                     )
     ifac = type1_cache_fac(li, rca)
     jfac = type1_cache_fac(lj, rcb)
@@ -143,7 +146,10 @@ def type1_by_shell(mol, shls, ecpatm_id, ecpbas):
                     for i1, i2, i3 in loop_xyz(ix, iy, iz):
                         for j1, j2, j3 in loop_xyz(jx, jy, jz):
                             fac = ifac[mi, i1, i2, i3] * jfac[mj, j1, j2, j3]
-                            tmp += fac * rad_ang_all[ic, jc, i1 + j1, i2 + j2, i3 + j3]
+                            tmp += (
+                                fac
+                                * rad_ang_all[ic, jc, i1 + j1, i2 + j2, i3 + j3]
+                            )
                     g1[ic, jc, mi, mj] = tmp
 
     gsph = numpy.empty((nci, ncj, li * 2 + 1, lj * 2 + 1))
@@ -159,7 +165,9 @@ def type1_cache_fac(li, ri):
     facs4 = numpy.zeros(((li + 1) * (li + 2) // 2, li + 1, li + 1, li + 1))
     for mi, (ix, iy, iz) in enumerate(loop_cart(li)):
         for i1, i2, i3 in loop_xyz(ix, iy, iz):
-            facs4[mi, i1, i2, i3] = facs[0, ix, i1] * facs[1, iy, i2] * facs[2, iz, i3]
+            facs4[mi, i1, i2, i3] = (
+                facs[0, ix, i1] * facs[1, iy, i2] * facs[2, iz, i3]
+            )
     return facs4
 
 
@@ -167,7 +175,9 @@ def type1_rad_part(lmax, k, aij, ur, rs):
     rad_all = numpy.empty((lmax + 1, lmax + 1))
     bessel_val = sph_ine(lmax, k * rs)
     ur_base = (
-        numpy.exp(k**2 / (4 * aij)) * ur * numpy.exp(-aij * (rs - k / (2 * aij)) ** 2)
+        numpy.exp(k**2 / (4 * aij))
+        * ur
+        * numpy.exp(-aij * (rs - k / (2 * aij)) ** 2)
     )
     idx = abs(ur_base) > 1e-80
     for lab in range(lmax + 1):
@@ -242,7 +252,9 @@ def type2_by_shell(mol, shls, ecpatm_id, ecpbas):
             continue
         ur = rad_part(mol, ecpbasi, rs) * ws
         idx = abs(ur) > 1e-80
-        rur = numpy.array([ur[idx] * rs[idx] ** lab for lab in range(li + lj + 1)])
+        rur = numpy.array(
+            [ur[idx] * rs[idx] ** lab for lab in range(li + lj + 1)]
+        )
 
         fi = facs_rad(mol, ish, lc, r_ca, rs)[:, :, idx].copy()
         fj = facs_rad(mol, jsh, lc, r_cb, rs)[:, :, idx].copy()
@@ -256,7 +268,10 @@ def type2_by_shell(mol, shls, ecpatm_id, ecpbas):
                 for i1 in range(li + 1):
                     for j1 in range(lj + 1):
                         g1[ic, jc] += numpy.einsum(
-                            "pq,imp,jmq->ij", rad_all[i1 + j1], angi[i1], angj[j1]
+                            "pq,imp,jmq->ij",
+                            rad_all[i1 + j1],
+                            angi[i1],
+                            angj[j1],
                         )
 
     g1 *= (numpy.pi * 4) ** 2
@@ -306,7 +321,9 @@ def so_by_shell(mol, shls, ecpatm_id, ecpbas):
             continue
         ur = rad_part(mol, ecpbasi, rs) * ws
         idx = abs(ur) > 1e-80
-        rur = numpy.array([ur[idx] * rs[idx] ** lab for lab in range(li + lj + 1)])
+        rur = numpy.array(
+            [ur[idx] * rs[idx] ** lab for lab in range(li + lj + 1)]
+        )
 
         fi = facs_rad(mol, ish, lc, r_ca, rs)[:, :, idx].copy()
         fj = facs_rad(mol, jsh, lc, r_cb, rs)[:, :, idx].copy()
@@ -332,7 +349,9 @@ def so_by_shell(mol, shls, ecpatm_id, ecpbas):
                         )
 
     g1 *= (numpy.pi * 4) ** 2
-    gspinor = numpy.empty((nci, ncj, li * 4 + 2, lj * 4 + 2), dtype=numpy.complex128)
+    gspinor = numpy.empty(
+        (nci, ncj, li * 4 + 2, lj * 4 + 2), dtype=numpy.complex128
+    )
     for ic in range(nci):
         for jc in range(ncj):
             ui = numpy.asarray(gto.cart2spinor_l(li))
@@ -425,7 +444,9 @@ def type1_ang_part(lmax, rij):
     omega_nuc = []
     for lmb in range(lmax + 1):
         c2smat = c2s_bra(lmb, numpy.eye((lmb + 1) * (lmb + 2) // 2))
-        omega_nuc.append(4 * numpy.pi * numpy.dot(ang_nuc_part(lmb, unitr), c2smat))
+        omega_nuc.append(
+            4 * numpy.pi * numpy.dot(ang_nuc_part(lmb, unitr), c2smat)
+        )
 
     omega = numpy.empty((lmax + 1, lmax + 1, lmax + 1, lmax + 1))
     for lmb in range(lmax + 1):
@@ -436,7 +457,9 @@ def type1_ang_part(lmax, rij):
                     if (i + j + k + lmb) % 2 == 0:
                         for n, (i1, j1, k1) in enumerate(loop_cart(lmb)):
                             omega_elec[n] = int_unit_xyz(i + i1, j + j1, k + k1)
-                        omega[lmb, i, j, k] = numpy.dot(omega_nuc[lmb], omega_elec)
+                        omega[lmb, i, j, k] = numpy.dot(
+                            omega_nuc[lmb], omega_elec
+                        )
                     else:
                         omega[lmb, i, j, k] = 0
     return omega
@@ -454,14 +477,18 @@ def type2_ang_part(li, lc, ri):
     omega_nuc = []
     for lmb in range(li + lc + 1):
         c2smat = c2s_bra(lmb, numpy.eye((lmb + 1) * (lmb + 2) // 2))
-        omega_nuc.append(4 * numpy.pi * numpy.dot(ang_nuc_part(lmb, unitr), c2smat))
+        omega_nuc.append(
+            4 * numpy.pi * numpy.dot(ang_nuc_part(lmb, unitr), c2smat)
+        )
     tmp = numpy.empty((lcart, li + lc + 1))
     for a in range(li + 1):
         for b in range(li + 1 - a):
             for c in range(li + 1 - a - b):
                 for lmb in range(li + lc + 1):
                     if (lc + a + b + c + lmb) % 2 == 0:
-                        omega_xyz = numpy.empty((lcart, (lmb + 1) * (lmb + 2) // 2))
+                        omega_xyz = numpy.empty(
+                            (lcart, (lmb + 1) * (lmb + 2) // 2)
+                        )
                         for m, (u, v, w) in enumerate(loop_cart(lc)):
                             for n, (i1, j1, k1) in enumerate(loop_cart(lmb)):
                                 omega_xyz[m, n] = int_unit_xyz(
@@ -503,7 +530,11 @@ def facs_ang(omega, l, lc, fac_cache):
     facs = numpy.zeros((l + 1, (l + 1) * (l + 2) // 2, lc * 2 + 1, l + lc + 1))
     for mi, (ix, iy, iz) in enumerate(loop_cart(l)):
         for i1, i2, i3 in loop_xyz(ix, iy, iz):
-            fac = fac_cache[0, ix, i1] * fac_cache[1, iy, i2] * fac_cache[2, iz, i3]
+            fac = (
+                fac_cache[0, ix, i1]
+                * fac_cache[1, iy, i2]
+                * fac_cache[2, iz, i3]
+            )
             facs[i1 + i2 + i3, mi, :, :] += fac * omega[i1, i2, i3]
     return facs
 
@@ -566,7 +597,9 @@ class KnownValues(unittest.TestCase):
         rs = radi.gauss_chebyshev(99)[0]
         bessel1 = numpy.empty(8)
         for _, x in enumerate(rs):
-            bessel0 = scipy.special.spherical_in(numpy.arange(7 + 1), x) * numpy.exp(-x)
+            bessel0 = scipy.special.spherical_in(
+                numpy.arange(7 + 1), x
+            ) * numpy.exp(-x)
             libecp.ECPsph_ine(
                 bessel1.ctypes.data_as(ctypes.c_void_p),
                 ctypes.c_int(7),
@@ -828,7 +861,8 @@ Na F
             mat0 = 0
             for ia in range(mol.natm):
                 ecpbas = mol._ecpbas[
-                    (mol._ecpbas[:, ATOM_OF] == ia) & (mol._ecpbas[:, SO_TYPE_OF] == 1)
+                    (mol._ecpbas[:, ATOM_OF] == ia)
+                    & (mol._ecpbas[:, SO_TYPE_OF] == 1)
                 ]
                 if len(ecpbas) == 0:
                     continue

@@ -66,15 +66,21 @@ class BaseInt2c(torch.autograd.Function):
         grad_allposs: Tensor | None = None
         if allposs.requires_grad:
             # grad_allposs = torch.zeros_like(allposs)  # (natom, ndim)
-            grad_allpossT = torch.zeros_like(allposs).transpose(-2, -1)  # (ndim, natom)
+            grad_allpossT = torch.zeros_like(allposs).transpose(
+                -2, -1
+            )  # (ndim, natom)
 
             # get the integrals required for the derivatives
-            sname_derivs = [int_nmgr.get_intgl_deriv_namemgr("ip", ib) for ib in (0, 1)]
+            sname_derivs = [
+                int_nmgr.get_intgl_deriv_namemgr("ip", ib) for ib in (0, 1)
+            ]
             # new axes added to the dimension
             new_axes_pos = [
                 int_nmgr.get_intgl_deriv_newaxispos("ip", ib) for ib in (0, 1)
             ]
-            assert isinstance(new_axes_pos[0], int) and isinstance(new_axes_pos[1], int)
+            assert isinstance(new_axes_pos[0], int) and isinstance(
+                new_axes_pos[1], int
+            )
 
             def int_fcn(
                 wrappers: list[LibcintWrapper], namemgr: IntorNameManager
@@ -84,7 +90,9 @@ class BaseInt2c(torch.autograd.Function):
                 )
 
             # list of tensors with shape: (ndim, ..., nao0, nao1)
-            dout_dposs = get_integrals(sname_derivs, wrappers, int_fcn, new_axes_pos)
+            dout_dposs = get_integrals(
+                sname_derivs, wrappers, int_fcn, new_axes_pos
+            )
 
             ndim = dout_dposs[0].shape[0]
             shape = (ndim, -1, *dout_dposs[0].shape[-2:])
@@ -111,7 +119,10 @@ class BaseInt2c(torch.autograd.Function):
                 grad_allpossT, dim=-1, index=ao_to_atom0, src=grad_dpos_i
             )
             updated_grad_allpossT = torch.scatter_add(
-                updated_grad_allpossT, dim=-1, index=ao_to_atom1, src=grad_dpos_j
+                updated_grad_allpossT,
+                dim=-1,
+                index=ao_to_atom1,
+                src=grad_dpos_j,
             )
 
             # Transpose back to match the shape of grad_allposs
@@ -131,7 +142,9 @@ class BaseInt2c(torch.autograd.Function):
             u_params = u_wrappers[0].params
 
             # get the uncontracted (gathered) grad_out
-            u_grad_out = gather_at_dims(grad_out, mapidxs=uao2aos, dims=[-2, -1])
+            u_grad_out = gather_at_dims(
+                grad_out, mapidxs=uao2aos, dims=[-2, -1]
+            )
 
             # get the scatter indices
             ao2shl0 = u_wrappers[0].ao_to_shell()
@@ -149,8 +162,12 @@ class BaseInt2c(torch.autograd.Function):
                 )
 
                 # get the coefficients and spread it on the u_ao-length tensor
-                coeffs_ao0 = torch.gather(allcoeffs, dim=-1, index=ao2shl0)  # (nu_ao0)
-                coeffs_ao1 = torch.gather(allcoeffs, dim=-1, index=ao2shl1)  # (nu_ao1)
+                coeffs_ao0 = torch.gather(
+                    allcoeffs, dim=-1, index=ao2shl0
+                )  # (nu_ao0)
+                coeffs_ao1 = torch.gather(
+                    allcoeffs, dim=-1, index=ao2shl1
+                )  # (nu_ao1)
 
                 # divide done here instead of after scatter to make the 2nd
                 # gradient calculation correct. Division can also be done after
@@ -160,26 +177,37 @@ class BaseInt2c(torch.autograd.Function):
                 dout_dcoeff_j = dout_dcoeff / coeffs_ao1
 
                 # (nu_ao)
-                grad_dcoeff_i = einsum("...ij,...ij->i", u_grad_out, dout_dcoeff_i)
-                grad_dcoeff_j = einsum("...ij,...ij->j", u_grad_out, dout_dcoeff_j)
+                grad_dcoeff_i = einsum(
+                    "...ij,...ij->i", u_grad_out, dout_dcoeff_i
+                )
+                grad_dcoeff_j = einsum(
+                    "...ij,...ij->j", u_grad_out, dout_dcoeff_j
+                )
 
                 # scatter the grad
-                grad_allcoeffs.scatter_add_(dim=-1, index=ao2shl0, src=grad_dcoeff_i)
-                grad_allcoeffs.scatter_add_(dim=-1, index=ao2shl1, src=grad_dcoeff_j)
+                grad_allcoeffs.scatter_add_(
+                    dim=-1, index=ao2shl0, src=grad_dcoeff_i
+                )
+                grad_allcoeffs.scatter_add_(
+                    dim=-1, index=ao2shl1, src=grad_dcoeff_j
+                )
 
             # calculate the gradient w.r.t. alphas
             if allalphas.requires_grad:
                 grad_allalphas = torch.zeros_like(allalphas)  # (ngauss)
 
                 def u_int_fcn(u_wrappers, int_nmgr) -> Tensor:
-                    return _int2c(*u_params, wrappers=u_wrappers, namemgr=int_nmgr)
+                    return _int2c(
+                        *u_params, wrappers=u_wrappers, namemgr=int_nmgr
+                    )
 
                 # get the uncontracted integrals
                 sname_derivs = [
                     int_nmgr.get_intgl_deriv_namemgr("rr", ib) for ib in (0, 1)
                 ]
                 new_axes_pos = [
-                    int_nmgr.get_intgl_deriv_newaxispos("rr", ib) for ib in (0, 1)
+                    int_nmgr.get_intgl_deriv_newaxispos("rr", ib)
+                    for ib in (0, 1)
                 ]
                 dout_dalphas = get_integrals(
                     sname_derivs, u_wrappers, u_int_fcn, new_axes_pos
@@ -187,13 +215,21 @@ class BaseInt2c(torch.autograd.Function):
 
                 # (nu_ao)
                 # negative because the exponent is negative alpha * (r-ra)^2
-                grad_dalpha_i = -einsum("...ij,...ij->i", u_grad_out, dout_dalphas[0])
-                grad_dalpha_j = -einsum("...ij,...ij->j", u_grad_out, dout_dalphas[1])
+                grad_dalpha_i = -einsum(
+                    "...ij,...ij->i", u_grad_out, dout_dalphas[0]
+                )
+                grad_dalpha_j = -einsum(
+                    "...ij,...ij->j", u_grad_out, dout_dalphas[1]
+                )
                 # grad_dalpha = (grad_dalpha_i + grad_dalpha_j)  # (nu_ao)
 
                 # scatter the grad
-                grad_allalphas.scatter_add_(dim=-1, index=ao2shl0, src=grad_dalpha_i)
-                grad_allalphas.scatter_add_(dim=-1, index=ao2shl1, src=grad_dalpha_j)
+                grad_allalphas.scatter_add_(
+                    dim=-1, index=ao2shl0, src=grad_dalpha_i
+                )
+                grad_allalphas.scatter_add_(
+                    dim=-1, index=ao2shl1, src=grad_dalpha_j
+                )
 
         return (grad_allcoeffs, grad_allalphas, grad_allposs, None, None, None)
 
@@ -394,7 +430,9 @@ def int1e(
     )
 
 
-def overlap(wrapper: LibcintWrapper, other: LibcintWrapper | None = None) -> Tensor:
+def overlap(
+    wrapper: LibcintWrapper, other: LibcintWrapper | None = None
+) -> Tensor:
     """
     Shortcut for the overlap integral.
 
