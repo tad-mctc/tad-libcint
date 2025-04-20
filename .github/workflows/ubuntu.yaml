@@ -67,6 +67,8 @@ jobs:
           # PyTorch>=2.5.0 does not support Python<3.9
           - python-version: "3.8"
             torch-version: "2.5.1"
+          - python-version: "3.8"
+            torch-version: "2.6.0"
 
     runs-on: ${{ matrix.os }}
 
