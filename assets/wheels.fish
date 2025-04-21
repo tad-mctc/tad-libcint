@@ -26,7 +26,7 @@ function handle_exit
     echo "Exited!"
     exit
 end
-trap handle_exit SIGINT SIGTERM
+trap handle_exit SIGINT SIGTERM SIGHUP
 
 set -l VERSIONS "38" "39" "310" "311" "312"
 
