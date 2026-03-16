@@ -23,6 +23,7 @@ Symmetry: S4
 
 Four-fold symmetry: (...ijkl) == (...jikl) == (...ijlk) == (...jilk)
 """
+
 from __future__ import annotations
 
 import numpy as np

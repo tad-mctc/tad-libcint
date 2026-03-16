@@ -25,6 +25,7 @@ This module provides the wrapper for interfacing with libcint.
 The main class handles the conversion of from dxtb's basis format to libcint's
 internal format.
 """
+
 from __future__ import annotations
 
 from contextlib import contextmanager

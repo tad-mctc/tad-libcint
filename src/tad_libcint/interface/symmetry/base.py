@@ -23,6 +23,7 @@ Symmetry: Base Class
 
 Base class for all symmetry classes.
 """
+
 from __future__ import annotations
 
 from abc import abstractmethod

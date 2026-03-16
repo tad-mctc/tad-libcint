@@ -20,6 +20,7 @@ Typing: PyTorch
 
 This module contains PyTorch-related type annotations.
 """
+
 from torch import Tensor
 
 __all__ = ["Tensor"]

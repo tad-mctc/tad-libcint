@@ -23,6 +23,7 @@ Interface: Utility
 
 This module contains helpers required for calculating integrals with libcint.
 """
+
 from __future__ import annotations
 
 import ctypes

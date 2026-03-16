@@ -27,6 +27,7 @@ loaded lazily when the first attribute is accessed.
 The shared objects are expected to be located in the same directory as this
 module.
 """
+
 from pathlib import Path
 
 from tad_libcint.lazyloader import LazySharedLibraryLoader

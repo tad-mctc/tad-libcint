@@ -23,6 +23,7 @@ Interface: Integrals
 
 This module contains the integral functions.
 """
+
 from __future__ import annotations
 
 import ctypes
