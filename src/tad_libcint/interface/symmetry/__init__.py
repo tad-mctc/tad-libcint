@@ -20,6 +20,7 @@ Interface: Symmetry
 
 Collection of symmetry classes.
 """
+
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:

@@ -24,6 +24,7 @@ Interface: Integral Namemanager
 The libcint interface is accessed via strings. This module provides the
 corresponding name handling and manipulation.
 """
+
 from __future__ import annotations
 
 import copy

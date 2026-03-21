@@ -23,6 +23,7 @@ Symmetry: S1
 
 S1 symmetry (no symmetry). In tight-binding, we do not require anything special here. Only S1 symmetry is of intereset.
 """
+
 from __future__ import annotations
 
 import numpy as np

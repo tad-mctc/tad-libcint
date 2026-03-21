@@ -23,6 +23,7 @@ Integrals: Utility
 
 This module contains utility functions for the integral interface.
 """
+
 from __future__ import annotations
 
 import copy

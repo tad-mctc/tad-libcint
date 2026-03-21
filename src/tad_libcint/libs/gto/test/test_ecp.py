@@ -46,9 +46,7 @@ mol = gto.M(
             [4, [0.79, 1.0], [0.579, 1.0]],
         ],
     },
-    ecp={
-        "Na": gto.basis.parse_ecp(
-            """
+    ecp={"Na": gto.basis.parse_ecp("""
 Na nelec 10
 Na ul
 0      2.0000000              6.0000000
@@ -65,9 +63,7 @@ Na S
 #1    189.6248810            117.4495683
 #2     54.5247759            423.3986704
 #2      0.9461106              7.1241813
-"""
-        )
-    },
+""")},
 )
 
 
@@ -838,9 +834,7 @@ class KnownValues(unittest.TestCase):
                     """,
             charge=1,
             basis={"Na": [(0, (1, 1)), (1, (4, 1)), (1, (1, 1)), (2, (1, 1))]},
-            ecp={
-                "Na": gto.basis.parse_ecp(
-                    """
+            ecp={"Na": gto.basis.parse_ecp("""
 Na nelec 8
 Na ul
 1      0.    -3.    -3.
@@ -852,9 +846,7 @@ Na D
 1      0.    -3.    -3.
 Na F
 1      0.    -3.    -3.
-"""
-                )
-            },
+""")},
         )
 
         def gen_so(shls):

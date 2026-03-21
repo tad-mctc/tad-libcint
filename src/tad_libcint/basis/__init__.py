@@ -20,4 +20,5 @@ Basis
 
 Utility for constructing the basis passed to the *libcint* interface.
 """
+
 from .datastructures import *

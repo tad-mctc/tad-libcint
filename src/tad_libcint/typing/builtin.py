@@ -20,6 +20,7 @@ Typing: Builtins
 
 This module contains all used built-in type annotations.
 """
+
 from typing import Any, Iterator, Protocol, TypeVar
 
 __all__ = ["Any", "Iterator", "Protocol", "TypeVar"]
