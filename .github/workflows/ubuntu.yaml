@@ -21,7 +21,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  python:
+  main:
     strategy:
       fail-fast: false
       matrix:
