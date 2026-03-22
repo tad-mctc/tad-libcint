@@ -38,10 +38,9 @@ jobs:
 
   wheel:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        python: ["3.8", "3.9", "3.10", "3.11", "3.12"]
+
+    # We no longer need the Python matrix here!
+    # cibuildwheel automatically loops through 3.8-3.14 based on your pyproject.toml
 
     permissions:
       contents: read
@@ -66,48 +65,16 @@ jobs:
           persist-credentials: false
           submodules: "recursive"
 
-      - name: Setup Python
-        uses: mamba-org/setup-micromamba@0dea6379afdaffa5d528b3d1dabc45da37f443fc # v2.0.4
-        with:
-          init-shell: bash
-          environment-name: py${{ matrix.python }}
-          create-args: >-
-            python=${{ matrix.python }}
-            auditwheel
-            c-compiler=1.5.2
-            cxx-compiler=1.5.2
-            fortran-compiler=1.5.2
-            cffi
-            cmake
-            libgcc<14
-            libgfortran<14
-            libstdcxx<14
-            make
-            meson
-            ninja
-            numpy
-            pip
-            python-build
-            pkgconfig
-            patchelf
-            sysroot_linux-64=2.12
-            unzip
-            wheel
-
-      - name: Build wheel (bdist)
-        run: |
-          set -ex
-          python -m build --wheel
-          auditwheel show dist/*.whl
-          auditwheel repair -w wheels --plat $plat dist/*.whl
+      - name: Build wheels via cibuildwheel
+        uses: pypa/cibuildwheel@v2.23.0
         env:
-          plat: manylinux_2_17_x86_64  # 2014
+          CIBW_OUTDIR: dist
 
-      - name: Upload wheel as artifact
+      - name: Upload wheels as artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ github.event.repository.name }}-wheel-${{ matrix.python }}
-          path: dist
+          name: ${{ github.event.repository.name }}-wheels
+          path: dist/*.whl
 
   install_wheel:
     needs: [wheel]
@@ -141,7 +108,7 @@ jobs:
       - name: Install wheel
         run: |
           pip install torch --index-url https://download.pytorch.org/whl/cpu
-          pip install dist/*${PY_TAG}-${PY_TAG}*.whl
+          pip install dist/*${PY_TAG}-*.whl
         env:
           PY_TAG: ${{ env.PY_TAG }}
 
