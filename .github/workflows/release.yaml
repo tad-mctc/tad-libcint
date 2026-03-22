@@ -67,8 +67,8 @@ jobs:
 
       - name: Build wheels via cibuildwheel
         uses: pypa/cibuildwheel@v2.23.0
-        env:
-          CIBW_OUTDIR: dist
+        with:
+          output-dir: dist
 
       - name: Upload wheels as artifact
         uses: actions/upload-artifact@v4
