@@ -73,6 +73,24 @@ pip install tad-libcint
 
 ### Build from source
 
+You can also build the Python wheels from source.
+
+Get the repository (including libcint submodule).
+
+```console
+git clone --recursive git@github.com:tad-mctc/tad-libcint.git
+cd tad-libcint
+```
+
+The [libcint fork](https://github.com/tad-mctc/libcint/tree/dxtb) contains additional integrals required for `dxtb` and removes unneccessary ones.
+Therefore, downloading from our fork is recommended.
+
+If you already have the repository, you can update the submodule with
+
+```console
+git submodule update --remote
+```
+
 #### CIBuildWheel
 
 Building with `cibuildwheel` is as simple as running
@@ -89,44 +107,26 @@ CIBW_BUILD="cp312-manylinux_x86_64" CIBW_MANYLINUX_X86_64_IMAGE="manylinux2014" 
 
 #### Conda
 
-You can also build the Python wheels from source.
-
-1. Get the repository (including libcint submodule).
-
-```console
-git clone --recursive git@github.com:tad-mctc/tad-libcint.git
-cd tad-libcint
-```
-
-The [libcint fork](https://github.com/tad-mctc/libcint/tree/dxtb) contains additional integrals required for `dxtb` and removes unneccessary ones.
-Therefore, downloading from our fork is recommended.
-
-If you already have the repository, you can update the submodule with
-
-```console
-git submodule update --remote
-```
-
-2. Create an environment (`conda`) for building the wheels. The example here uses Python 3.10, but we support 3.8-3.11.
+1. Create an environment (`conda`) for building the wheels. The example here uses Python 3.10, but we support 3.8-3.11.
 
 ```console
 mamba create -n wheel-310 --yes python=3.10 auditwheel c-compiler cxx-compiler fortran-compiler cffi cmake git make meson ninja numpy patchelf pkgconfig pip python-build unzip wheel
 mamba activate wheel-310
 ```
 
-3. Build the wheel on your system.
+2. Build the wheel on your system.
 
 ```console
 python -m build --wheel
 ```
 
-4. Repair the wheels for cross-distribution packaging.
+3. Repair the wheels for cross-distribution packaging.
 
 ```console
 auditwheel repair -w wheels --plat manylinux_2_17_x86_64 dist/*-cp310-cp310-linux_x86_64.whl
 ```
 
-5. Or only install this project with `pip` in the environment.
+4. Or only install this project with `pip` in the environment.
 
 ```console
 pip install .
