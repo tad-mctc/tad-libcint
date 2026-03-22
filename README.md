@@ -73,6 +73,22 @@ pip install tad-libcint
 
 ### Build from source
 
+#### CIBuildWheel
+
+Building with `cibuildwheel` is as simple as running
+
+```console
+cibuildwheel --platform linux
+```
+
+For a specific version, use
+
+```console
+CIBW_BUILD="cp312-manylinux_x86_64" CIBW_MANYLINUX_X86_64_IMAGE="manylinux2014" cibuildwheel --platform linux
+```
+
+#### Conda
+
 You can also build the Python wheels from source.
 
 1. Get the repository (including libcint submodule).
@@ -107,7 +123,7 @@ python -m build --wheel
 4. Repair the wheels for cross-distribution packaging.
 
 ```console
-auditwheel repair -w wheels --plat manylinux_2_12_x86_64 dist/*-cp310-cp310-linux_x86_64.whl
+auditwheel repair -w wheels --plat manylinux_2_17_x86_64 dist/*-cp310-cp310-linux_x86_64.whl
 ```
 
 5. Or only install this project with `pip` in the environment.
@@ -118,18 +134,22 @@ pip install .
 
 ## Compatibility <img src="https://img.shields.io/badge/OS-Linux_only-black.svg" alt="Linux only">
 
-| PyTorch \ Python | 3.8                | 3.9                | 3.10               | 3.11               | 3.12               |
-|------------------|--------------------|--------------------|--------------------|--------------------|--------------------|
-| 1.11.0           | :white_check_mark: | :white_check_mark: | :x:                | :x:                | :x:                |
-| 1.12.1           | :white_check_mark: | :white_check_mark: | :white_check_mark: | :x:                | :x:                |
-| 1.13.1           | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :x:                |
-| 2.0.1            | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :x:                |
-| 2.1.2            | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :x:                |
-| 2.2.2            | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
-| 2.3.1            | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
-| 2.4.1            | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
-| 2.5.1            | :x:                | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
-| 2.6.0            | :x:                | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
+| PyTorch \ Python | 3.8                | 3.9                | 3.10               | 3.11               | 3.12               | 3.13               | 3.14               |
+| ---------------- | ------------------ | ------------------ | ------------------ | ------------------ | ------------------ | ------------------ | ------------------ |
+| 1.11.0           | :white_check_mark: | :white_check_mark: | :x:                | :x:                | :x:                | :x:                | :x:                |
+| 1.12.1           | :white_check_mark: | :white_check_mark: | :white_check_mark: | :x:                | :x:                | :x:                | :x:                |
+| 1.13.1           | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :x:                | :x:                | :x:                |
+| 2.0.1            | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :x:                | :x:                | :x:                |
+| 2.1.2            | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :x:                | :x:                | :x:                |
+| 2.2.2            | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :x:                | :x:                |
+| 2.3.1            | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :x:                | :x:                |
+| 2.4.1            | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :x:                | :x:                |
+| 2.5.1            | :x:                | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :x:                | :x:                |
+| 2.6.0            | :x:                | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :x:                |
+| 2.7.1            | :x:                | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :x:                |
+| 2.8.0            | :x:                | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :x:                |
+| 2.9.1            | :x:                | :x:                | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
+| 2.10.0           | :x:                | :x:                | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
 
 Note that only the latest bug fix version is listed, but all preceding bug fix minor versions are supported.
 For example, although only version 2.2.2 is listed, version 2.2.0 and 2.2.1 are also supported.
