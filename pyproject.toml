@@ -28,10 +28,10 @@ markers = [
 
 
 [tool.cibuildwheel]
-build = "cp38-* cp39-* cp310-* cp311-* cp312-*"
+build = "cp38-* cp39-* cp310-* cp311-* cp312-* cp313-* cp314-*"
 environment = { PIP_EXTRA_INDEX_URL="https://download.pytorch.org/whl/cpu" }
 manylinux-x86_64-image = "manylinux2014"
-skip = "*musllinux* pp*"
+skip = "*musllinux*"
 
 [tool.cibuildwheel.linux]
 archs = ["x86_64"]
