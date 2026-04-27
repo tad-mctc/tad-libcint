@@ -13,10 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import _ctypes
 import ctypes
 import unittest
 
-import _ctypes
 import numpy
 from pyscf import ao2mo, gto, lib, scf
 
