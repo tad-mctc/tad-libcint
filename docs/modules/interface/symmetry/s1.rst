@@ -1,4 +1,0 @@
-.. automodule:: tad_libcint.interface.symmetry.s1
-   :members:
-   :undoc-members:
-   :show-inheritance:

@@ -111,8 +111,6 @@ jobs:
 
       - name: Install dependencies
         run: |
-          sudo apt update
-          sudo apt install -y libblas-dev
           python3 -m pip install --upgrade pip
           python3 -m pip install tox
 

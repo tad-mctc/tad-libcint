@@ -17,15 +17,8 @@
 
 include src/tad_libcint/libs/CMakeLists.txt
 include src/tad_libcint/libs/config.h
-include src/tad_libcint/libs/config.h.in
-
-recursive-include src/tad_libcint/libs/gto *
-prune src/tad_libcint/libs/gto/test
-
-recursive-include src/tad_libcint/libs/np_helper *
-
-recursive-include src/tad_libcint/libs/vhf *
-prune src/tad_libcint/libs/vhf/test
+recursive-include src/tad_libcint/libs/gto *.c *.h
+recursive-include src/tad_libcint/libs/np_helper *.c *.h
 
 # libcint
 include src/tad_libcint/libs/libcint/AUTHORS

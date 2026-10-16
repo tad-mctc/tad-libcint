@@ -35,7 +35,6 @@ skip = "*musllinux*"
 
 [tool.cibuildwheel.linux]
 archs = ["x86_64"]
-before-build = ["yum install -y openblas-devel"]
 
 
 [tool.mypy]

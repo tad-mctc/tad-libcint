@@ -20,19 +20,56 @@ Test import of libraries.
 
 from __future__ import annotations
 
+import importlib.util
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
 import tad_libcint
 
 
 def test_load() -> None:
-    """Try loading the libraries."""
-    cgto = tad_libcint.CGTO
-    cint = tad_libcint.CINT
+    """The symbols used by the package are exported."""
+    assert tad_libcint.CGTO.GTOint2c.__name__ == "GTOint2c"
+    assert tad_libcint.CINT.int1e_ovlp_sph.__name__ == "int1e_ovlp_sph"
+    assert tad_libcint.CINT.CINTdel_optimizer.__name__ == "CINTdel_optimizer"
 
-    # test loading integrals
-    gto1 = getattr(cgto, "GTOval_cart")
-    gto2 = getattr(cgto, "GTOval_ip_cart")
-    cint1 = getattr(cint, "int1e_ovlp_sph")
 
-    assert gto1.__name__ == "GTOval_cart"
-    assert gto2.__name__ == "GTOval_ip_cart"
-    assert cint1.__name__ == "int1e_ovlp_sph"
+def test_unique_library_names() -> None:
+    """The libraries are suffixed and do not shadow PySCF's libraries."""
+    for lib in (tad_libcint.CINT, tad_libcint.CGTO):
+        assert lib.path.name.endswith("_tad.so")
+        assert lib.path.is_file()
+
+    names = {p.name for p in Path(tad_libcint.__file__).parent.glob("lib*.so*")}
+    assert names == {"libcint_tad.so", "libcgto_tad.so"}
+
+
+_TAD = """
+import torch
+from tad_mctc.io.structure import Structure
+from tad_libcint import Basis, Shell, overlap
+dd = {"dtype": torch.double}
+shells = {1: [Shell(0, torch.tensor([1.0], **dd), torch.tensor([2.5], **dd))]}
+basis = Basis(shells)
+positions = torch.tensor([[0.0, 0.0, 0.0], [0.0, 0.0, 1.4]], **dd)
+overlap(basis, Structure(numbers=torch.tensor([1, 1]), positions=positions))
+"""
+
+_PYSCF = """
+from pyscf import gto, scf
+mol = gto.M(atom="H 0 0 0; H 0 0 0.74", basis="sto-3g")
+scf.RHF(mol).kernel()
+"""
+
+
+@pytest.mark.parametrize("order", ["tad-first", "pyscf-first"])
+def test_coexistence_with_pyscf(order: str) -> None:
+    """Both packages work in one process, independent of the loading order."""
+    if importlib.util.find_spec("pyscf") is None:
+        pytest.skip("PySCF is not installed")
+
+    script = _TAD + _PYSCF if order == "tad-first" else _PYSCF + _TAD
+    subprocess.run([sys.executable, "-c", script], check=True)

@@ -53,12 +53,89 @@ The interface facilitates automatic differentiation with custom backward functio
 
 It is based on [PySCF's lib directory](https://github.com/pyscf/pyscf/tree/master/pyscf/lib). Modifications include
 
-- removal of unnecessary code
-- minor adaptation of build instructions (CMakeLists.txt)
+- only the driver for two-centre integral matrices (`GTOint2c`) and its helpers are kept
+- a new CMake build that compiles the libcint submodule directly and suffixes all libraries with `_tad`
 
 The project was heavily inspired by *[diffqc/dqc](https://github.com/diffqc/dqc)* and *[diffqc/dqclibs](https://github.com/diffqc/dqclibs)*.
 
 This interface was mainly written for the calculation of integrals within *[grimme-lab/dxtb](https://github.com/grimme-lab/dxtb)*.
+
+
+## Usage
+
+A `Basis` holds the shells of every element: their angular momenta, exponents and contraction coefficients.
+The atoms are passed to every integral call as a [tad-mctc](https://github.com/tad-mctc/tad-mctc) `Structure` (atomic numbers and positions in Bohr), so one basis serves all conformers of a molecule as well as different molecules.
+Contraction coefficients are used as given, i.e., they must include the normalization of the primitives.
+
+```python
+import torch
+from tad_mctc.io.structure import Structure
+from tad_libcint import Basis, Shell, int1e, overlap
+
+dd = {"dtype": torch.double}
+
+# STO-3G shells of each element: angular momentum, exponents, coefficients
+# (coefficients include the normalization in libcint's convention)
+shells = {
+    1: [
+        Shell(0, torch.tensor([3.42525, 0.623914, 0.168855], **dd), torch.tensor([0.981707, 0.949464, 0.295906], **dd)),
+    ],
+    8: [
+        Shell(0, torch.tensor([130.709, 23.8089, 6.44361], **dd), torch.tensor([15.0727, 14.5777, 4.54323], **dd)),
+        Shell(0, torch.tensor([5.03315, 1.1696, 0.380389], **dd), torch.tensor([-0.848697, 1.1352, 0.856753], **dd)),
+        Shell(1, torch.tensor([5.03315, 1.1696, 0.380389], **dd), torch.tensor([3.42907, 2.15629, 0.341592], **dd)),
+    ],
+}
+
+water = Structure(
+    numbers=torch.tensor([8, 1, 1]),
+    positions=torch.tensor([[0.0, 0.0, 0.22], [0.0, 1.43, -0.89], [0.0, -1.43, -0.89]], **dd),
+)
+
+basis = Basis(shells)
+s = overlap(basis, water)  # (nao, nao)
+dipole = int1e("j", basis, water)  # (3, nao, nao), about each ket's atom
+```
+
+Gradients with respect to positions, exponents (`basis.alphas`) and coefficients (`basis.coeffs`) are available through autograd and are computed with *libcint*'s derivative integrals.
+The exponents and coefficients are shared by all atoms of an element.
+
+Periodic structures (with a `lattice`) are not supported yet and raise an error.
+
+### Batches and `torch.func`
+
+The integrals are pure functions of the structure, exponents and coefficients and compose with `torch.vmap`, `torch.func.grad` and `torch.func.jacrev`, to any derivative order (forward-mode AD is not supported).
+A batched `Structure` (one leading batch dimension) is evaluated structure by structure, and `torch.vmap` maps over a `Structure` directly:
+
+- **Conformers** repeat the atomic numbers, e.g. a multi-frame XYZ file read with `tad_mctc.io.read`.
+- **Different structures** are zero-padded to a common number of atoms (atomic number 0 marks padding), e.g. with `tad_mctc.io.structure.pack_structures`.
+  The integrals of each structure are zero-padded to the largest number of AOs in the batch, with the structure's AOs first.
+  Padding atoms get zero gradients.
+
+The `torch.func` transforms differentiate with respect to tensors, not structures (the atomic numbers are integers).
+Replace the positions inside the differentiated function instead, `structure.replace(positions=positions)`.
+
+```python
+from torch.func import jacrev, vmap
+from tad_mctc.io import read
+from tad_mctc.io.structure import pack_structures
+
+conformers = read.read("conformers.xyz", dtype=torch.double)  # positions: (nconf, nat, 3)
+s = overlap(basis, conformers)  # (nconf, nao, nao)
+
+molecules = [read.read(f, dtype=torch.double) for f in ("water.xyz", "methane.xyz")]
+batch = pack_structures(molecules)
+s = overlap(basis, batch)  # (2, nao_max, nao_max)
+
+def dipole(structure, positions):
+    return int1e("j", basis, structure.replace(positions=positions))
+
+# Jacobians w.r.t. the positions, (2, 3, nao_max, nao_max, nat_max, 3)
+jac = vmap(jacrev(dipole, argnums=1))(batch, batch.positions)
+```
+
+Since *libcint* is C code, a batch is evaluated one structure after another.
+Combining very different structures in one batch wastes memory on padding.
 
 
 ## Installation
@@ -90,6 +167,14 @@ If you already have the repository, you can update the submodule with
 ```console
 git submodule update --remote
 ```
+
+The build requires CMake (≥ 3.18) and a C compiler (with OpenMP for parallel integral evaluation).
+Extra CMake options are passed through the `CMAKE_ARGS` environment variable, e.g., `CMAKE_ARGS="-DBUILD_MARCH_NATIVE=ON" pip install .`.
+
+The compiler is taken from `CC`. Besides GCC, the Intel oneAPI compiler (`icx`) is supported, e.g., after `module load intel`.
+The libraries then find Intel's runtime libraries in the compiler installation, so the compiler environment is not needed at runtime.
+
+All shared libraries carry the suffix `_tad` (`libcint_tad.so`, `libcgto_tad.so`), so that they do not clash with PySCF's libraries of the same name when both packages are used in one process.
 
 #### CIBuildWheel
 

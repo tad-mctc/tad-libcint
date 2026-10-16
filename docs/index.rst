@@ -39,8 +39,8 @@ The interface facilitates automatic differentiation with custom backward functio
 
 It is based on `PySCF's lib directory <https://github.com/pyscf/pyscf/tree/master/pyscf/lib>`__. Modifications include
 
-- removal of unnecessary code
-- minor adaptation of build instructions (CMakeLists.txt)
+- only the driver for two-centre integral matrices (``GTOint2c``) and its helpers are kept
+- a new CMake build that compiles the libcint submodule directly and suffixes all libraries with ``_tad``
 
 The project was heavily inspired by `diffqc/dqc <https://github.com/diffqc/dqc>`__ and `diffqc/dqclibs <https://github.com/diffqc/dqclibs>`__.
 

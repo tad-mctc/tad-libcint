@@ -18,17 +18,30 @@
 PyTorch-based Libcint Interface
 ===============================
 
-Implementation of a PyTorch-based interface to the *libcint* high-performance
-integral library. The interface supports automatic differentiation with custom
-backward functions that also call the C backend for the derivatives.
+Differentiable one-electron integrals from the *libcint* high-performance
+integral library. Gradients with respect to atomic positions, exponents and
+contraction coefficients are computed by libcint's derivative integrals.
 
-Currently, only one-electron integrals are supported.
+A :class:`Basis` holds the shells of every element, the integral functions
+take a :class:`~tad_mctc.io.structure.Structure` (atomic numbers and
+positions):
+
+>>> import torch
+>>> from tad_mctc.io.structure import Structure
+>>> from tad_libcint import Basis, Shell, int1e
+>>> dd = {"dtype": torch.double}
+>>> h = [Shell(0, torch.tensor([1.0], **dd), torch.tensor([2.52647511], **dd))]
+>>> basis = Basis({1: h})
+>>> numbers = torch.tensor([1, 1])
+>>> positions = torch.tensor([[0.0, 0.0, 0.0], [0.0, 0.0, 1.4]], **dd)
+>>> h2 = Structure(numbers=numbers, positions=positions)
+>>> int1e("r0", basis, h2).shape
+torch.Size([3, 2, 2])
 """
 
-import torch
-
 from ._version import __version__
-from .api import CGTO, CINT
-from .interface import LibcintWrapper, int1e
+from .basis import Basis, Shell
+from .integrals import int1e, overlap
+from .library import CGTO, CINT
 
-__all__ = ["CINT", "CGTO", "LibcintWrapper", "int1e", "__version__"]
+__all__ = ["Basis", "Shell", "int1e", "overlap", "CINT", "CGTO", "__version__"]
