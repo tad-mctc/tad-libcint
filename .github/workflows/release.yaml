@@ -40,7 +40,7 @@ jobs:
     runs-on: ubuntu-latest
 
     # We no longer need the Python matrix here!
-    # cibuildwheel automatically loops through 3.8-3.14 based on your pyproject.toml
+    # cibuildwheel automatically loops through 3.10-3.14 based on your pyproject.toml
 
     permissions:
       contents: read

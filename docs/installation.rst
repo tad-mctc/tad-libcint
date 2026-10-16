@@ -46,7 +46,7 @@ If you already have the repository, you can update the submodule with
 We recommend using a `conda <https://conda.io/>`__ environment to install the package.
 You can setup the environment manager using a `mambaforge <https://github.com/conda-forge/miniforge>`__ installer.
 Install the required dependencies from the conda-forge channel.
-The example here uses Python 3.10, but we support 3.8-3.11.
+The example here uses Python 3.10, but we support 3.10-3.14.
 
 .. code::
 
