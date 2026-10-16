@@ -25,13 +25,12 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from tad_libcint.interface.symmetry import s1 as s1
-    from tad_libcint.interface.symmetry import s4 as s4
 else:
     import tad_libcint.lazyloader as _lazy
 
     __getattr__, __dir__, __all__ = _lazy.attach_module(
         __name__,
-        ["s1", "s4"],
+        ["s1"],
     )
 
     del _lazy
