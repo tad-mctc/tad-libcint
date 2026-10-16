@@ -49,6 +49,9 @@ def get_integrals(
     # returns the results. If new_axes_pos is specified, then move the new axes
     # to 0, otherwise, just leave it as it is.
 
+    if len(int_nmgrs) == 0:
+        return []
+
     res: list[Tensor] = []
     # indicating if the integral is available in the libcint-generated file
     int_avail: list[bool] = [False] * len(int_nmgrs)

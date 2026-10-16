@@ -4,8 +4,8 @@
   <tr>
     <td>Compatibility:</td>
     <td>
-      <img src="https://img.shields.io/badge/Python-3.8%20|%203.9%20|%203.10%20|%203.11%20|%203.12-blue.svg" alt="Python Versions"/>
-      <img src="https://img.shields.io/badge/PyTorch-%3E=1.11.0-blue.svg" alt="PyTorch Versions"/>
+      <img src="https://img.shields.io/badge/Python-3.10%20|%203.11%20|%203.12%20|%203.13%20|%203.14-blue.svg" alt="Python Versions"/>
+      <img src="https://img.shields.io/badge/PyTorch-%3E=2.6.0-blue.svg" alt="PyTorch Versions"/>
       <img src="https://img.shields.io/badge/OS-Linux-blue.svg" alt="Operating Systems">
     </td>
   </tr>
@@ -107,7 +107,7 @@ CIBW_BUILD="cp312-manylinux_x86_64" CIBW_MANYLINUX_X86_64_IMAGE="manylinux2014" 
 
 #### Conda
 
-1. Create an environment (`conda`) for building the wheels. The example here uses Python 3.10, but we support 3.8-3.11.
+1. Create an environment (`conda`) for building the wheels. The example here uses Python 3.10, but we support 3.10-3.14.
 
 ```console
 mamba create -n wheel-310 --yes python=3.10 auditwheel c-compiler cxx-compiler fortran-compiler cffi cmake git make meson ninja numpy patchelf pkgconfig pip python-build unzip wheel
@@ -134,25 +134,22 @@ pip install .
 
 ## Compatibility <img src="https://img.shields.io/badge/OS-Linux_only-black.svg" alt="Linux only">
 
-| PyTorch \ Python | 3.8                | 3.9                | 3.10               | 3.11               | 3.12               | 3.13               | 3.14               |
-| ---------------- | ------------------ | ------------------ | ------------------ | ------------------ | ------------------ | ------------------ | ------------------ |
-| 1.11.0           | :white_check_mark: | :white_check_mark: | :x:                | :x:                | :x:                | :x:                | :x:                |
-| 1.12.1           | :white_check_mark: | :white_check_mark: | :white_check_mark: | :x:                | :x:                | :x:                | :x:                |
-| 1.13.1           | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :x:                | :x:                | :x:                |
-| 2.0.1            | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :x:                | :x:                | :x:                |
-| 2.1.2            | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :x:                | :x:                | :x:                |
-| 2.2.2            | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :x:                | :x:                |
-| 2.3.1            | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :x:                | :x:                |
-| 2.4.1            | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :x:                | :x:                |
-| 2.5.1            | :x:                | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :x:                | :x:                |
-| 2.6.0            | :x:                | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :x:                |
-| 2.7.1            | :x:                | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :x:                |
-| 2.8.0            | :x:                | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :x:                |
-| 2.9.1            | :x:                | :x:                | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
-| 2.10.0           | :x:                | :x:                | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
+| PyTorch \ Python | 3.10               | 3.11               | 3.12               | 3.13               | 3.14               |
+| ---------------- | ------------------ | ------------------ | ------------------ | ------------------ | ------------------ |
+| 2.6.0            | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :white_check_mark: | :x:                |
+| 2.7.1            | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :white_check_mark: | :x:                |
+| 2.8.0            | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :white_check_mark: | :x:                |
+| 2.9.1            | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :white_check_mark: |
+| 2.10.0           | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :white_check_mark: |
+| 2.11.0           | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :white_check_mark: |
+| 2.12.1           | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :white_check_mark: |
+| 2.13.0           | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :white_check_mark: |
+| 2.14.1           | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |
+
+:white_check_mark: tested in CI &nbsp;&nbsp; :heavy_check_mark: supported, but not tested in CI (should still work) &nbsp;&nbsp; :x: not supported
 
 Note that only the latest bug fix version is listed, but all preceding bug fix minor versions are supported.
-For example, although only version 2.2.2 is listed, version 2.2.0 and 2.2.1 are also supported.
+For example, although only version 2.7.1 is listed, version 2.7.0 is also supported.
 
 
 ## Development

@@ -1,8 +1,8 @@
 PyTorch-based Libcint Interface
 ===============================
 
-.. image:: https://img.shields.io/badge/Python-3.8%20|%203.9%20|%203.10%20|%203.11%20|%203.12-blue.svg
-    :target: https://img.shields.io/badge/Python-3.8%20|%203.9%20|%203.10%20|%203.11%20|%203.12-blue.svg
+.. image:: https://img.shields.io/badge/Python-3.10%20|%203.11%20|%203.12%20|%203.13%20|%203.14-blue.svg
+    :target: https://img.shields.io/badge/Python-3.10%20|%203.11%20|%203.12%20|%203.13%20|%203.14-blue.svg
     :alt: Python Versions
 
 .. image:: https://img.shields.io/github/v/release/tad-mctc/tad-libcint

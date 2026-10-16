@@ -27,7 +27,6 @@ Short-cuts for the 2c1e-integrals.
 from __future__ import annotations
 
 import torch
-from tad_mctc._version import __tversion__
 from tad_mctc.math import einsum
 
 from tad_libcint.typing import Callable, Protocol, Tensor
@@ -47,11 +46,54 @@ class CTX(Protocol):
     hermitian: bool
 
 
-class BaseInt2c(torch.autograd.Function):
+class Int2c(torch.autograd.Function):
     """
-    Base class for version-specific autograd function for 2-centre integrals.
-    Different PyTorch versions only require different `forward()` signatures.
+    Wrapper class to provide the gradient of the 2-centre integrals.
     """
+
+    generate_vmap_rule = True
+
+    @staticmethod
+    def forward(
+        allcoeffs: Tensor,
+        allalphas: Tensor,
+        allposs: Tensor,
+        wrappers: list[LibcintWrapper],
+        int_nmgr: IntorNameManager,
+        hermitian: bool,
+    ) -> Tensor:
+        # Those tensors are not used directly in the forward calculation, but
+        # required for backward propagation:
+        # - allcoeffs: (ngauss_tot,)
+        # - allalphas: (ngauss_tot,)
+        # - allposs: (nat, 3)
+        #
+        # Wrapper0 and wrapper1 must have the same _atm, _bas, and _env.
+        # The check should be done before calling this function.
+        assert len(wrappers) == 2
+
+        # (..., nao0, nao1)
+        return Intor(int_nmgr, wrappers, hermitian=hermitian).calc()
+
+    @staticmethod
+    def setup_context(
+        ctx: CTX,
+        inputs: tuple[
+            Tensor, Tensor, Tensor, list[LibcintWrapper], IntorNameManager, bool
+        ],
+        output: Tensor,
+    ) -> None:
+        allcoeffs = inputs[0]
+        allalphas = inputs[1]
+        allposs = inputs[2]
+        wrappers = inputs[3]
+        int_nmgr = inputs[4]
+        hermitian = inputs[5]
+
+        ctx.save_for_backward(allcoeffs, allalphas, allposs)
+        ctx.wrappers = wrappers
+        ctx.int_nmgr = int_nmgr
+        ctx.hermitian = hermitian
 
     @staticmethod
     def backward(ctx: CTX, grad_out: Tensor) -> tuple[Tensor | None, ...]:
@@ -233,90 +275,6 @@ class BaseInt2c(torch.autograd.Function):
         return (grad_allcoeffs, grad_allalphas, grad_allposs, None, None, None)
 
 
-class Int2c_V1(BaseInt2c):
-    """
-    Wrapper class to provide the gradient of the 2-centre integrals.
-    """
-
-    @staticmethod
-    def forward(
-        ctx: CTX,
-        allcoeffs: Tensor,
-        allalphas: Tensor,
-        allposs: Tensor,
-        wrappers: list[LibcintWrapper],
-        int_nmgr: IntorNameManager,
-        hermitian: bool,
-    ) -> Tensor:
-        # Those tensors are not used directly in the forward calculation, but
-        # required for backward propagation:
-        # - allcoeffs: (ngauss_tot,)
-        # - allalphas: (ngauss_tot,)
-        # - allposs: (nat, 3)
-        #
-        # Wrapper0 and wrapper1 must have the same _atm, _bas, and _env.
-        # The check should be done before calling this function.
-        assert len(wrappers) == 2
-
-        ctx.save_for_backward(allcoeffs, allalphas, allposs)
-        ctx.wrappers = wrappers
-        ctx.int_nmgr = int_nmgr
-        ctx.hermitian = hermitian
-
-        # (..., nao0, nao1)
-        return Intor(int_nmgr, wrappers, hermitian=hermitian).calc()
-
-
-class Int2c_V2(BaseInt2c):
-    """
-    Wrapper class to provide the gradient of the 2-centre integrals.
-    """
-
-    generate_vmap_rule = True
-
-    @staticmethod
-    def forward(
-        allcoeffs: Tensor,
-        allalphas: Tensor,
-        allposs: Tensor,
-        wrappers: list[LibcintWrapper],
-        int_nmgr: IntorNameManager,
-        hermitian: bool,
-    ) -> Tensor:
-        # Those tensors are not used directly in the forward calculation, but
-        # required for backward propagation:
-        # - allcoeffs: (ngauss_tot,)
-        # - allalphas: (ngauss_tot,)
-        # - allposs: (nat, 3)
-        #
-        # Wrapper0 and wrapper1 must have the same _atm, _bas, and _env.
-        # The check should be done before calling this function.
-        assert len(wrappers) == 2
-
-        # (..., nao0, nao1)
-        return Intor(int_nmgr, wrappers, hermitian=hermitian).calc()
-
-    @staticmethod
-    def setup_context(
-        ctx: CTX,
-        inputs: tuple[
-            Tensor, Tensor, Tensor, list[LibcintWrapper], IntorNameManager, bool
-        ],
-        output: Tensor,
-    ) -> None:
-        allcoeffs = inputs[0]
-        allalphas = inputs[1]
-        allposs = inputs[2]
-        wrappers = inputs[3]
-        int_nmgr = inputs[4]
-        hermitian = inputs[5]
-
-        ctx.save_for_backward(allcoeffs, allalphas, allposs)
-        ctx.wrappers = wrappers
-        ctx.int_nmgr = int_nmgr
-        ctx.hermitian = hermitian
-
-
 def _int2c(
     allcoeffs: Tensor,
     allalphas: Tensor,
@@ -348,9 +306,7 @@ def _int2c(
     Tensor
         Integral tensor.
     """
-    Int2cFunction = Int2c_V1 if __tversion__ < (2, 0, 0) else Int2c_V2
-
-    integral = Int2cFunction.apply(
+    integral = Int2c.apply(
         allcoeffs, allalphas, allposs, wrappers, namemgr, hermitian
     )
 

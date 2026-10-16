@@ -52,6 +52,9 @@ __all__ = ["LibcintWrapper"]
 # from libcint/src/cint_const.h
 PTR_RINV_ORIG = 4
 
+POINT_NUC = 1
+FRAC_CHARGE_NUC = 3
+
 
 class LibcintWrapper:
     """
@@ -103,19 +106,32 @@ class LibcintWrapper:
                     f"components, but {atombasis.pos.numel()} were found."
                 )
 
-            # construct the atom environment
-            atomz = atombasis.atomz
-            # charge, ptr_coord, nucl model (unused for standard nucl model)
-            atm_list.append([int(atomz), ptr_env, 1, ptr_env + NDIM, 0, 0])
-            env_list.extend([float(x) for x in atombasis.pos.detach()])
-            env_list.append(0.0)
-            ptr_env += NDIM + 1
-
             # check if the atomz is fractional
-            if isinstance(atomz, float) or (
+            atomz = atombasis.atomz
+            isfrac = isinstance(atomz, float) or (
                 isinstance(atomz, Tensor) and atomz.is_floating_point()
-            ):
+            )
+            if isfrac is True:
                 self._fracz = True
+
+            # construct the atom environment
+            # charge, ptr_coord, nucl model, ptr_zeta (unused for point
+            # nucleus), ptr_frac_charge, reserved
+            nuc_mod = FRAC_CHARGE_NUC if isfrac is True else POINT_NUC
+            atm_list.append(
+                [
+                    int(atomz),
+                    ptr_env,
+                    nuc_mod,
+                    ptr_env + NDIM,
+                    ptr_env + NDIM + 1,
+                    0,
+                ]
+            )
+            env_list.extend([float(x) for x in atombasis.pos.detach()])
+            env_list.append(0.0)  # zeta
+            env_list.append(float(atomz))  # fractional charge
+            ptr_env += NDIM + 2
 
             # add the atom position into the parameter list
             # TODO: consider moving allpos into shell
@@ -455,7 +471,7 @@ class LibcintWrapper:
             The context manager.
         """
         env = self.atm_bas_env[-1]
-        prev_centre = env[PTR_RINV_ORIG : PTR_RINV_ORIG + NDIM]
+        prev_centre = env[PTR_RINV_ORIG : PTR_RINV_ORIG + NDIM].copy()
         try:
             env[PTR_RINV_ORIG : PTR_RINV_ORIG + NDIM] = tensor_to_numpy(r)
             yield
