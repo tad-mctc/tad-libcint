@@ -29,8 +29,8 @@ jobs:
         # Only the newest PyTorch release is tested against every Python
         # version. All other releases run on a single Python version each
         # (see the `include` block below). This is sufficient because the
-        # package has no PyTorch-version-dependent code paths and released
-        # wheels never change.
+        # package has no PyTorch-version-dependent code paths for the
+        # supported versions and released wheels never change.
         #
         # To restore the full (dense) matrix: swap in the commented-out
         # `torch-version` list, delete the `include` block and uncomment the
