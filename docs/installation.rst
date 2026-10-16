@@ -50,7 +50,7 @@ The example here uses Python 3.10, but we support 3.10-3.14.
 
 .. code::
 
-    mamba env create -f env-310.yaml
+    mamba create -n wheel-310 --yes python=3.10 auditwheel c-compiler cxx-compiler fortran-compiler cffi cmake git make meson ninja numpy patchelf pkgconfig pip python-build unzip wheel
     mamba activate wheel-310
 
 3. Build the wheel.
@@ -63,7 +63,7 @@ The example here uses Python 3.10, but we support 3.10-3.14.
 
 .. code::
 
-    auditwheel repair -w wheels --plat manylinux_2_12_x86_64 dist/*-cp310-cp310-linux_x86_64.whl
+    auditwheel repair -w wheels --plat manylinux_2_17_x86_64 dist/*-cp310-cp310-linux_x86_64.whl
 
 5. Or only install this project with ``pip`` in the environment.
 
