@@ -21,123 +21,58 @@
 Setup for C Extension.
 """
 
+import os
+import shlex
 from pathlib import Path
 
 from setuptools import Extension, setup
 from setuptools.command.build_ext import build_ext
 
-module_name: str = "tad_libcint"
-ext_name: str = "tad_libcint.pyscflibs"
+LIB_DIR = Path(__file__).resolve().parent / "src" / "tad_libcint" / "libs"
 
-file_dir: Path = Path(__file__).resolve().parent
-
-
-# Arguments for CMake
+# Arguments for CMake, extended by the `CMAKE_ARGS` environment variable
+# (e.g. `CMAKE_ARGS="-DBUILD_MARCH_NATIVE=ON" pip install .`)
 CMAKE_ARGS = [
     "-DCMAKE_BUILD_TYPE=Release",
-    "-DDISABLE_DFT=ON",
-    "-DBUILD_LIBCINT=ON",
-    "-DWITH_F12=OFF",
-    "-DPYPZPX=OFF",
-    # '-DWITH_RANGE_COULOMB=OFF', # no variable in CMakeLists.txt
+    *shlex.split(os.environ.get("CMAKE_ARGS", "")),
 ]
-
-# Number of cores for CMake's build step
-CORES = 8
-
-
-class CMakeExtension(Extension):
-    """
-    Extension module for CMake.
-    """
-
-    def __init__(self, name: str, sourcedir: str = "") -> None:
-        """
-        Initialize a new CMakeExtension.
-
-        Parameters
-        ----------
-        name : str
-            The name of the extension.
-        sourcedir : str, optional
-            The source directory of the extension.
-        """
-        super().__init__(name, sources=[])
-        self.sourcedir = Path(sourcedir).resolve()
 
 
 class CMakeBuildExt(build_ext):
-    """
-    Build extension module for CMake.
-    """
-
-    def run(self) -> None:
-        """
-        Run the extension building process.
-        """
-        extension = self.extensions[0]
-        assert extension.name == ext_name
-        self.build_extension(self.extensions[0])
+    """Build the shared libraries in `LIB_DIR` with CMake"""
 
     def build_extension(self, ext: Extension) -> None:
-        """
-        Build an extension.
-
-        Parameters
-        ----------
-        ext : Extension
-            The extension to build.
-        """
-        self.construct_extension(ext)
-
-    def construct_extension(self, ext: Extension) -> None:
-        """
-        Construct an extension.
-
-        Parameters
-        ----------
-        ext : Extension
-            The extension to construct.
-        """
-        # libraries from PySCF
-        lib_dir = file_dir / "src" / module_name / "libs"
-
-        build_dir = Path(self.build_temp)
-        self.announce(
-            f"Compiling libraries from PySCF from {lib_dir} to {build_dir}",
-            level=3,
-        )
-        self.build_cmake(ext, lib_dir, build_dir)
-
-    def build_cmake(
-        self, ext: Extension, lib_dir: Path, build_dir: Path
-    ) -> None:
-        """
-        Build an extension with CMake.
-
-        Parameters
-        ----------
-        ext : Extension
-            The extension to build.
-        lib_dir : Path
-            The library directory of the extension.
-        build_dir : Path
-            The build directory for CMake.
-        """
         extdir = Path(self.get_ext_fullpath(ext.name)).resolve().parent
-        self.announce("Configuring cmake", level=3)
-        cmake_args = [
-            "-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=" + str(extdir)
-        ] + CMAKE_ARGS
-        cmd = ["cmake", f"-S{lib_dir}", f"-B{build_dir}"] + cmake_args
-        self.spawn(cmd)
+        build_dir = Path(self.build_temp)
+        self.spawn(
+            [
+                "cmake",
+                f"-S{LIB_DIR}",
+                f"-B{build_dir}",
+                f"-DCMAKE_LIBRARY_OUTPUT_DIRECTORY={extdir}",
+                *CMAKE_ARGS,
+            ]
+        )
+        jobs = str(os.cpu_count() or 1)
+        self.spawn(["cmake", "--build", str(build_dir), "--parallel", jobs])
 
-        self.announce("Building binaries", level=3)
-        cmd = ["cmake", "--build", str(build_dir), f"-j{CORES}"]
-        self.spawn(cmd)
+    def copy_extensions_to_source(self) -> None:
+        # Editable installs (and `--inplace` builds) copy every extension next
+        # to its sources. The extension is only a placeholder that does not
+        # exist, so copy the libraries that CMake built in its place.
+        build_py = self.get_finalized_command("build_py")
+        for ext in self.extensions:
+            package = ext.name.rpartition(".")[0]
+            source_dir = Path(build_py.get_package_dir(package))
+            build_dir = (
+                Path(self.build_lib) / self.get_ext_filename(ext.name)
+            ).parent
+            for library in build_dir.glob("lib*_tad.*"):
+                self.copy_file(str(library), str(source_dir / library.name))
 
 
 setup(
-    ext_modules=[CMakeExtension(ext_name)],
+    # the libraries are no Python extension; the name only sets their directory
+    ext_modules=[Extension("tad_libcint._libraries", sources=[])],
     cmdclass={"build_ext": CMakeBuildExt},
 )

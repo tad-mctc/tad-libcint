@@ -20,19 +20,81 @@ Test import of libraries.
 
 from __future__ import annotations
 
+import importlib.util
+import subprocess
+import sys
+from pathlib import Path
+
+import numpy as np
+import pytest
+
 import tad_libcint
+from tad_libcint.library import (
+    ATM_SLOTS,
+    BAS_SLOTS,
+    PTR_ENV_START,
+    int2c,
+)
 
 
 def test_load() -> None:
-    """Try loading the libraries."""
-    cgto = tad_libcint.CGTO
-    cint = tad_libcint.CINT
+    """The symbols used by the package are exported."""
+    assert tad_libcint.CGTO.GTOint2c.__name__ == "GTOint2c"
+    assert tad_libcint.CINT.int1e_ovlp_sph.__name__ == "int1e_ovlp_sph"
+    assert tad_libcint.CINT.CINTdel_optimizer.__name__ == "CINTdel_optimizer"
 
-    # test loading integrals
-    gto1 = getattr(cgto, "GTOval_cart")
-    gto2 = getattr(cgto, "GTOval_ip_cart")
-    cint1 = getattr(cint, "int1e_ovlp_sph")
 
-    assert gto1.__name__ == "GTOval_cart"
-    assert gto2.__name__ == "GTOval_ip_cart"
-    assert cint1.__name__ == "int1e_ovlp_sph"
+def test_unique_library_names() -> None:
+    """The libraries are suffixed and do not shadow PySCF's libraries."""
+    for lib in (tad_libcint.CINT, tad_libcint.CGTO):
+        assert lib.path.name.endswith("_tad.so")
+        assert lib.path.is_file()
+
+    names = {p.name for p in Path(tad_libcint.__file__).parent.glob("lib*.so*")}
+    assert names == {"libcint_tad.so", "libcgto_tad.so"}
+
+
+@pytest.mark.parametrize("component", [-1, 3])
+def test_int2c_components_out_of_range(component: int) -> None:
+    """Components beyond those of the integral are refused."""
+    with pytest.raises(ValueError, match="out of 3"):
+        int2c(
+            "int1e_r_sph",
+            (3,),
+            False,
+            shls_slice=(0, 1, 0, 1),
+            components=[0, component],
+            atm=np.zeros((1, ATM_SLOTS), dtype=np.int32),
+            bas=np.zeros((1, BAS_SLOTS), dtype=np.int32),
+            env=np.zeros(PTR_ENV_START),
+            ao_loc=np.array([0, 1], dtype=np.int32),
+        )
+
+
+_TAD = """
+import torch
+from tad_mctc.io.structure import Structure
+from tad_libcint import Basis, Shell, overlap
+dd = {"dtype": torch.double}
+alpha, coeff = torch.tensor([1.0], **dd), torch.tensor([2.5], **dd)
+shells = {1: [Shell(angmom=0, alphas=alpha, coeffs=coeff)]}
+basis = Basis(shells=shells)
+positions = torch.tensor([[0.0, 0.0, 0.0], [0.0, 0.0, 1.4]], **dd)
+overlap(basis, Structure(numbers=torch.tensor([1, 1]), positions=positions))
+"""
+
+_PYSCF = """
+from pyscf import gto, scf
+mol = gto.M(atom="H 0 0 0; H 0 0 0.74", basis="sto-3g")
+scf.RHF(mol).kernel()
+"""
+
+
+@pytest.mark.parametrize("order", ["tad-first", "pyscf-first"])
+def test_coexistence_with_pyscf(order: str) -> None:
+    """Both packages work in one process, independent of the loading order."""
+    if importlib.util.find_spec("pyscf") is None:
+        pytest.skip("PySCF is not installed")
+
+    script = _TAD + _PYSCF if order == "tad-first" else _PYSCF + _TAD
+    subprocess.run([sys.executable, "-c", script], check=True)
