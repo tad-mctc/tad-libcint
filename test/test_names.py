@@ -67,6 +67,21 @@ def test_comp_shape() -> None:
     assert IntegralName.parse("rrovlp").comp_shape == ()
 
 
+def test_packed() -> None:
+    """Packed quadrupoles keep 6 of the 9 operator components."""
+    name = IntegralName("r0r0", bra=("ip",), packed=True)
+    assert name.comp_shape == (3, 6)
+    assert name.unpacked.comp_shape == (3, 9)
+    assert name.components == [
+        9 * b + c for b in range(3) for c in (0, 3, 4, 6, 7, 8)
+    ]
+    assert name.differentiate("ip", "ket").components is not None
+    assert name.symbol(spherical=True) == "int1e_ipr0r0_sph"
+    assert IntegralName.parse("jj").components is None
+    with pytest.raises(ValueError, match="Only quadrupoles"):
+        IntegralName("j", packed=True)
+
+
 def test_differentiate_and_transpose() -> None:
     """Derivatives are prepended; transposition swaps bra and ket."""
     name = IntegralName.parse("ipr0")

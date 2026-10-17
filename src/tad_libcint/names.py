@@ -46,6 +46,7 @@ Example
 
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass, replace
 from typing import Literal
@@ -56,6 +57,8 @@ __all__ = [
     "CENTRAL_OPERATORS",
     "DERIVATIVE_OPERATORS",
     "KET_CENTRED_OPERATORS",
+    "PACKED_QUADRUPOLE",
+    "QUADRUPOLE_OPERATORS",
 ]
 
 Side = Literal["bra", "ket"]
@@ -74,6 +77,16 @@ CENTRAL_OPERATORS: dict[str, tuple[int, ...]] = {
     "jjj": (27,),
 }
 """Supported central operators and the shape of their components."""
+
+QUADRUPOLE_OPERATORS = ("r0r0", "jj")
+"""Quadrupole operators, whose components can be packed."""
+
+PACKED_QUADRUPOLE = (0, 3, 4, 6, 7, 8)
+"""
+Components of a quadrupole (row-major 3x3) that are kept when packed: the
+lower triangle xx, yx, yy, zx, zy, zz as in tblite. The upper triangle holds
+the same values, as the operators are symmetric tensors.
+"""
 
 KET_CENTRED_OPERATORS: dict[str, str] = {"j": "ovlp", "jj": "j", "jjj": "jj"}
 r"""
@@ -111,11 +124,21 @@ class IntegralName:
     ket: tuple[str, ...] = ()
     """Derivative operators on the ket function, outermost first."""
 
+    packed: bool = False
+    """
+    Only the components :data:`PACKED_QUADRUPOLE` of a quadrupole operator
+    (6 instead of 9).
+    """
+
     def __post_init__(self) -> None:
         if self.op not in CENTRAL_OPERATORS:
             raise ValueError(
                 f"Unsupported operator '{self.op}'. Supported operators are: "
                 f"{list(CENTRAL_OPERATORS)}."
+            )
+        if self.packed and self.op not in QUADRUPOLE_OPERATORS:
+            raise ValueError(
+                f"Only quadrupoles {QUADRUPOLE_OPERATORS} can be packed."
             )
         for op in self.bra + self.ket:
             if op not in DERIVATIVE_OPERATORS:
@@ -153,6 +176,8 @@ class IntegralName:
     @property
     def op_shape(self) -> tuple[int, ...]:
         """Component axes of the central operator"""
+        if self.packed:
+            return (len(PACKED_QUADRUPOLE),)
         return CENTRAL_OPERATORS[self.op]
 
     @property
@@ -164,6 +189,28 @@ class IntegralName:
     def comp_shape(self) -> tuple[int, ...]:
         """Shape of all components, in libcint's order (bra, op, ket)"""
         return self.bra_shape + self.op_shape + self.ket_shape
+
+    @property
+    def unpacked(self) -> IntegralName:
+        """The integral with all components, as libcint provides it"""
+        return replace(self, packed=False)
+
+    @property
+    def components(self) -> list[int] | None:
+        """
+        Flat indices of the components among those of :attr:`unpacked`, or
+        ``None`` for all of them.
+        """
+        if not self.packed:
+            return None
+        nbra, nket = math.prod(self.bra_shape), math.prod(self.ket_shape)
+        nop = math.prod(CENTRAL_OPERATORS[self.op])
+        return [
+            (b * nop + op) * nket + k
+            for b in range(nbra)
+            for op in PACKED_QUADRUPOLE
+            for k in range(nket)
+        ]
 
     @property
     def is_symmetric(self) -> bool:

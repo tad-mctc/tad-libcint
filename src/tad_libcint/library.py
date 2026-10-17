@@ -40,12 +40,24 @@ Example
 from __future__ import annotations
 
 import ctypes
+import math
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 
-__all__ = ["CINT", "CGTO", "LazySharedLibrary", "has_symbol", "int2c"]
+__all__ = [
+    "ATM_SLOTS",
+    "BAS_SLOTS",
+    "CGTO",
+    "CINT",
+    "FRAC_CHARGE_NUC",
+    "LazySharedLibrary",
+    "PTR_ENV_START",
+    "has_symbol",
+    "int2c",
+]
 
 
 # Slot layout of libcint's input arrays (see libcint's ``cint.h``).
@@ -106,13 +118,16 @@ def int2c(
     comp_shape: tuple[int, ...],
     hermitian: bool,
     *,
+    shls_slice: tuple[int, int, int, int],
+    pairs: np.ndarray | None = None,
+    components: Sequence[int] | None = None,
     atm: np.ndarray,
     bas: np.ndarray,
     env: np.ndarray,
     ao_loc: np.ndarray,
 ) -> np.ndarray:
     """
-    Evaluate a two-centre integral over all shells with libcint.
+    Evaluate a block of a two-centre integral with libcint.
 
     Parameters
     ----------
@@ -122,7 +137,18 @@ def int2c(
         Shape of the integral's components, e.g. ``(3,)`` for a dipole.
     hermitian : bool
         Only compute the lower triangle and mirror it. Must only be set for
-        integrals that are symmetric under exchange of bra and ket.
+        integrals that are symmetric under exchange of bra and ket, and for
+        blocks with the same bra and ket shells.
+    shls_slice : tuple[int, int, int, int]
+        First and last (exclusive) shell of the bra and of the ket.
+    pairs : np.ndarray | None, optional
+        Bra and ket shells of the shell pairs to evaluate, shape
+        ``(npairs, 2)``. The elements of all other shell pairs are zero.
+        Defaults to all shell pairs of the slice.
+    components : Sequence[int] | None, optional
+        Flat indices of the components to keep, in this order. The others
+        are never stored, not even temporarily for the whole block. Defaults
+        to all components.
     atm : np.ndarray
         Atom slots, shape ``(nat, ATM_SLOTS)``, ``int32``.
     bas : np.ndarray
@@ -135,19 +161,30 @@ def int2c(
     Returns
     -------
     np.ndarray
-        Integral of shape ``(*comp_shape, nao, nao)``.
+        Integral of shape ``(*comp_shape, nao_bra, nao_ket)``, or
+        ``(len(components), nao_bra, nao_ket)``.
     """
     atm = np.ascontiguousarray(atm, dtype=np.int32)
     bas = np.ascontiguousarray(bas, dtype=np.int32)
     env = np.ascontiguousarray(env, dtype=np.float64)
     ao_loc = np.ascontiguousarray(ao_loc, dtype=np.int32)
 
-    nat, nsh, nao = len(atm), len(bas), int(ao_loc[-1])
+    nat, nsh = len(atm), len(bas)
+    ish0, ish1, jsh0, jsh1 = shls_slice
+    nao_bra = int(ao_loc[ish1] - ao_loc[ish0])
+    nao_ket = int(ao_loc[jsh1] - ao_loc[jsh0])
     ncomp = int(np.prod(comp_shape))
-    shls_slice = (ctypes.c_int * 4)(0, nsh, 0, nsh)
+    if components is None:
+        comp_map, out_shape = None, comp_shape
+    else:
+        comp_map = np.asarray(components, dtype=np.int32)
+        out_shape = (len(comp_map),)
+        if ((comp_map < 0) | (comp_map >= ncomp)).any():
+            raise ValueError(f"Components {components} out of {ncomp}.")
 
     # libcint fills each component in column-major order
-    out = np.empty((ncomp, nao, nao), dtype=np.float64)
+    shape = (math.prod(out_shape), nao_ket, nao_bra)
+    out = np.empty(shape) if pairs is None else np.zeros(shape)
 
     # optimizer with precomputed, geometry-dependent data (must not outlive
     # the `env` it was created from)
@@ -155,22 +192,23 @@ def int2c(
     optimizer = getattr(CINT, symbol.rsplit("_", 1)[0] + "_optimizer")
     optimizer(ctypes.byref(opt), _ptr(atm), nat, _ptr(bas), nsh, _ptr(env))
 
+    block = (
+        getattr(CINT, symbol),
+        _ptr(out),
+        ncomp,
+        None if comp_map is None else _ptr(comp_map),
+        0 if comp_map is None else len(comp_map),
+        int(hermitian),
+        (ctypes.c_int * 4)(*shls_slice),
+    )
+    system = (_ptr(ao_loc), opt, _ptr(atm), nat, _ptr(bas), nsh, _ptr(env))
     try:
-        CGTO.GTOint2c(
-            getattr(CINT, symbol),
-            _ptr(out),
-            ncomp,
-            int(hermitian),
-            shls_slice,
-            _ptr(ao_loc),
-            opt,
-            _ptr(atm),
-            nat,
-            _ptr(bas),
-            nsh,
-            _ptr(env),
-        )
+        if pairs is None:
+            CGTO.GTOint2c(*block, *system)
+        else:
+            pairs = np.ascontiguousarray(pairs, dtype=np.int32)
+            CGTO.GTOint2c_pairs(*block, _ptr(pairs), len(pairs), *system)
     finally:
         CINT.CINTdel_optimizer(ctypes.byref(opt))
 
-    return out.swapaxes(-1, -2).reshape(*comp_shape, nao, nao)
+    return out.swapaxes(-1, -2).reshape(*out_shape, nao_bra, nao_ket)

@@ -52,8 +52,9 @@ import torch
 from tad_mctc.io.structure import Structure
 from tad_libcint import Basis, Shell, overlap
 dd = {"dtype": torch.double}
-shells = {1: [Shell(0, torch.tensor([1.0], **dd), torch.tensor([2.5], **dd))]}
-basis = Basis(shells)
+alpha, coeff = torch.tensor([1.0], **dd), torch.tensor([2.5], **dd)
+shells = {1: [Shell(angmom=0, alphas=alpha, coeffs=coeff)]}
+basis = Basis(shells=shells)
 positions = torch.tensor([[0.0, 0.0, 0.0], [0.0, 0.0, 1.4]], **dd)
 overlap(basis, Structure(numbers=torch.tensor([1, 1]), positions=positions))
 """

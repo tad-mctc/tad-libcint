@@ -28,8 +28,14 @@ to every integral call. One basis therefore serves conformers as well as
 different structures, including padded batches of them.
 
 For a given list of atomic numbers, the basis builds a :class:`Layout`, the
-libcint bookkeeping of one structure (cached per list of atomic numbers).
-Atomic number 0 marks padding: such atoms have no shells.
+libcint bookkeeping of one structure. Layouts are cached by the shells'
+angular momenta and numbers of primitives, so copies of a basis (e.g. by
+``.to()`` or inside ``torch.func`` transforms) share them. Atomic number 0
+marks padding: such atoms have no shells.
+
+:class:`Shell` and :class:`Basis` are :class:`~tad_mctc.tree.Node` objects:
+their tensors (exponents and coefficients) are pytree leaves, so a basis
+converts with ``.to()`` and passes through ``torch.func`` transforms.
 
 Terminology:
 
@@ -37,8 +43,13 @@ Terminology:
 - shell: a contraction of primitives with common angular momentum and centre
 - AO: one angular component of a shell (e.g. three for a spherical p shell)
 
-Contraction coefficients are used as given; include the normalization of the
-primitives in them.
+Contraction coefficients are used as given. A spherical AO is the radial part
+:math:`\\sum_k c_k r^l e^{-\\alpha_k r^2}` times a real spherical harmonic
+with unit norm on the sphere (libcint's convention). Coefficients of other
+conventions differ by a factor per angular momentum, e.g. by
+:math:`\\sqrt{4\\pi / (2l + 1)}` from coefficients that normalize the
+Cartesian function :math:`x^l e^{-\\alpha r^2}`. :meth:`Basis.normalized`
+scales the coefficients of every shell to unit self-overlap.
 
 Spherical AOs are ordered by :math:`m = -l, \\dots, l`, which puts the p
 functions in the order (py, pz, px). Cartesian AOs follow libcint's order,
@@ -48,13 +59,16 @@ Example
 -------
 >>> import torch
 >>> from tad_libcint import Basis, Shell
->>> dd = {"dtype": torch.double}
->>> basis = Basis({
-...     1: [Shell(0, torch.tensor([3.4, 0.6], **dd), torch.tensor([0.3, 0.7], **dd))],
-...     8: [
-...         Shell(0, torch.tensor([12.0, 2.5], **dd), torch.tensor([0.2, 0.5], **dd)),
-...         Shell(1, torch.tensor([3.0], **dd), torch.tensor([1.0], **dd)),
-...     ],
+>>> def shell(l, alphas, coeffs):
+...     dd = {"dtype": torch.double}
+...     return Shell(
+...         angmom=l,
+...         alphas=torch.tensor(alphas, **dd),
+...         coeffs=torch.tensor(coeffs, **dd),
+...     )
+>>> basis = Basis(shells={
+...     1: [shell(0, [3.4, 0.6], [0.3, 0.7])],
+...     8: [shell(0, [12.0, 2.5], [0.2, 0.5]), shell(1, [3.0], [1.0])],
 ... })
 >>> basis
 Basis(elements=[1, 8], nsh=3, spherical=True)
@@ -67,12 +81,15 @@ tensor([0, 0, 0, 0, 1, 2])
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from functools import cached_property, lru_cache
+from typing import Any
 
 import numpy as np
 import torch
+from tad_mctc.tree import Node, child, context
 from torch import Tensor
 
 from .library import (
@@ -85,8 +102,7 @@ from .library import (
 __all__ = ["Basis", "Layout", "Shell"]
 
 
-@dataclass(frozen=True, eq=False)
-class Shell:
+class Shell(Node):
     """
     Contracted Gaussian shell.
 
@@ -97,16 +113,16 @@ class Shell:
         are not one-dimensional tensors of equal, non-zero length.
     """
 
-    angmom: int
+    angmom: int = context()
     """Angular momentum."""
 
-    alphas: Tensor
+    alphas: Tensor = child()
     """Exponents of the primitives, shape ``(nprim,)``."""
 
-    coeffs: Tensor
+    coeffs: Tensor = child()
     """Contraction coefficients of the primitives, shape ``(nprim,)``."""
 
-    def __post_init__(self) -> None:
+    def _validate(self) -> None:
         if self.angmom < 0:
             raise ValueError(f"Negative angular momentum {self.angmom}.")
         if self.alphas.ndim != 1 or self.alphas.numel() == 0:
@@ -125,8 +141,41 @@ class Shell:
         """Number of primitives"""
         return self.alphas.numel()
 
+    def normalized(self) -> Shell:
+        r"""
+        The shell with its coefficients scaled to unit self-overlap.
 
-class Basis:
+        The self-overlap of the radial part
+        :math:`\sum_k c_k r^l e^{-\alpha_k r^2}` is
+
+        .. math::
+
+            \sum_{k,k'} c_k c_{k'}
+            \frac{\Gamma(l + 3/2)}{2 (\alpha_k + \alpha_{k'})^{l + 3/2}}.
+
+        The scaling is differentiable, so gradients w.r.t. the original
+        exponents and coefficients include the normalization.
+
+        Returns
+        -------
+        Shell
+            The normalized shell.
+        """
+        l = self.angmom
+        p = self.alphas.unsqueeze(-1) + self.alphas.unsqueeze(-2)
+        cc = self.coeffs.unsqueeze(-1) * self.coeffs.unsqueeze(-2)
+        overlap = 0.5 * math.gamma(l + 1.5) * (cc * p ** -(l + 1.5)).sum()
+        return self.replace(coeffs=self.coeffs * overlap.rsqrt())
+
+
+ElementShells = tuple[tuple[int, tuple[tuple[int, int, int], ...]], ...]
+"""
+Static structure of a basis: for each element (sorted by atomic number), the
+angular momentum, number of primitives and first parameter of each shell.
+"""
+
+
+class Basis(Node):
     """
     Gaussian basis set: the shells of every element.
 
@@ -135,74 +184,65 @@ class Basis:
     :attr:`coeffs`, the differentiable parameters of the integrals. Atoms of
     one element share these parameters.
 
-    Parameters
-    ----------
-    shells : Mapping[int, Sequence[Shell]]
-        Shells of each element, keyed by atomic number.
-    spherical : bool, optional
-        Use spherical (``True``) or cartesian (``False``) AOs. Defaults to
-        ``True``.
-    cache_size : int, optional
-        Number of layouts kept in the cache. Defaults to ``256``.
-
     Raises
     ------
     ValueError
-        If no shells are given, an atomic number is not positive, or the
-        shells' tensors have different dtypes or devices.
+        If no shells are given or an atomic number is not positive.
+    TypeError
+        If the shells' tensors have different dtypes.
+    RuntimeError
+        If the shells' tensors are on different devices.
     """
 
-    def __init__(
-        self,
-        shells: Mapping[int, Sequence[Shell]],
-        *,
-        spherical: bool = True,
-        cache_size: int = 256,
-    ) -> None:
-        self.shells = {int(z): tuple(shells[z]) for z in sorted(shells)}
-        self.spherical = spherical
+    shells: Mapping[int, Sequence[Shell]] = child()
+    """Shells of each element, keyed by atomic number."""
 
+    spherical: bool = context(default=True)
+    """Use spherical (``True``) or cartesian (``False``) AOs."""
+
+    def _normalize(self) -> dict[str, Any]:
+        # sorted by atomic number, which orders the parameters
+        items = sorted(self.shells.items())
+        shells = {int(z): tuple(z_shells) for z, z_shells in items}
+        return {"shells": shells}
+
+    def _validate(self) -> None:
         if not any(self.shells.values()):
             raise ValueError("A basis needs at least one shell.")
         if min(self.shells) < 1:
             raise ValueError("Atomic numbers must be positive.")
 
-        flat = [sh for z_shells in self.shells.values() for sh in z_shells]
-        tensors = [t for sh in flat for t in (sh.alphas, sh.coeffs)]
-        if len({(t.dtype, t.device) for t in tensors}) != 1:
-            raise ValueError(
-                "All exponents and coefficients must share dtype and device."
-            )
-        self.alphas = torch.cat([sh.alphas for sh in flat])
-        """Exponents of all primitives, shape ``(nparam,)``."""
-        self.coeffs = torch.cat([sh.coeffs for sh in flat])
-        """Coefficients of all primitives, shape ``(nparam,)``."""
+    @cached_property
+    def alphas(self) -> Tensor:
+        """Exponents of all primitives, shape ``(nparam,)``"""
+        return torch.cat([sh.alphas for sh in self._flat_shells])
 
-        # (angular momentum, number of primitives, first parameter) per shell
-        self._element_shells: dict[int, list[tuple[int, int, int]]] = {}
-        first = 0
-        for z, z_shells in self.shells.items():
-            self._element_shells[z] = []
-            for sh in z_shells:
-                self._element_shells[z].append((sh.angmom, sh.nprim, first))
-                first += sh.nprim
+    @cached_property
+    def coeffs(self) -> Tensor:
+        """Coefficients of all primitives, shape ``(nparam,)``"""
+        return torch.cat([sh.coeffs for sh in self._flat_shells])
 
-        self._layout = lru_cache(maxsize=cache_size)(self._build_layout)
+    @property
+    def _flat_shells(self) -> list[Shell]:
+        return [sh for z_shells in self.shells.values() for sh in z_shells]
 
     @property
     def nparam(self) -> int:
         """Number of primitives of all elements"""
-        return self.alphas.numel()
+        return sum(sh.nprim for sh in self._flat_shells)
 
-    @property
-    def dtype(self) -> torch.dtype:
-        """Floating point type of the basis parameters"""
-        return self.alphas.dtype
-
-    @property
-    def device(self) -> torch.device:
-        """Device of the basis parameters"""
-        return self.alphas.device
+    @cached_property
+    def element_shells(self) -> ElementShells:
+        """The static structure of the basis (see :data:`ElementShells`)"""
+        structure = []
+        first = 0
+        for z, z_shells in self.shells.items():
+            shells = []
+            for sh in z_shells:
+                shells.append((sh.angmom, sh.nprim, first))
+                first += sh.nprim
+            structure.append((z, tuple(shells)))
+        return tuple(structure)
 
     @cached_property
     def uncontracted(self) -> Basis:
@@ -212,17 +252,38 @@ class Basis:
         The primitives keep their order, so :attr:`alphas` and :attr:`coeffs`
         apply to both bases.
         """
-        return Basis(
-            {
-                z: [
-                    Shell(sh.angmom, sh.alphas[i : i + 1], sh.coeffs[i : i + 1])
-                    for sh in z_shells
-                    for i in range(sh.nprim)
-                ]
-                for z, z_shells in self.shells.items()
-            },
-            spherical=self.spherical,
-        )
+        shells = {
+            z: [
+                Shell(
+                    angmom=sh.angmom,
+                    alphas=sh.alphas[i : i + 1],
+                    coeffs=sh.coeffs[i : i + 1],
+                )
+                for sh in z_shells
+                for i in range(sh.nprim)
+            ]
+            for z, z_shells in self.shells.items()
+        }
+        return Basis(shells=shells, spherical=self.spherical)
+
+    def normalized(self) -> Basis:
+        """
+        The basis with every shell scaled to unit self-overlap (see
+        :meth:`Shell.normalized`).
+
+        Spherical AOs then have unit norm, Cartesian AOs only up to p
+        functions (e.g. ``xy`` and ``xx`` differ in norm).
+
+        Returns
+        -------
+        Basis
+            The normalized basis.
+        """
+        shells = {
+            z: [sh.normalized() for sh in z_shells]
+            for z, z_shells in self.shells.items()
+        }
+        return self.replace(shells=shells)
 
     def layout(self, numbers: Tensor) -> Layout:
         """
@@ -248,32 +309,11 @@ class Basis:
                 f"Expected atomic numbers of shape (nat,), got "
                 f"{tuple(numbers.shape)}."
             )
-        return self._layout(tuple(int(z) for z in numbers.tolist()))
-
-    def _build_layout(self, numbers: tuple[int, ...]) -> Layout:
-        missing = sorted(set(numbers) - set(self._element_shells) - {0})
-        if missing:
-            raise ValueError(f"The basis has no shells for elements {missing}.")
-
-        atom: list[int] = []
-        angmom: list[int] = []
-        nprim: list[int] = []
-        prim_param: list[int] = []
-        for iat, z in enumerate(numbers):
-            for l, n, first in self._element_shells.get(z, []):  # 0: padding
-                atom.append(iat)
-                angmom.append(l)
-                nprim.append(n)
-                prim_param.extend(range(first, first + n))
-
-        return Layout(
-            nat=len(numbers),
-            shell_atom=np.array(atom, dtype=np.int64),
-            shell_angmom=np.array(angmom, dtype=np.int64),
-            shell_nprim=np.array(nprim, dtype=np.int64),
-            prim_param=np.array(prim_param, dtype=np.int64),
-            spherical=self.spherical,
-            device=self.device,
+        return _layout(
+            self.element_shells,
+            self.spherical,
+            tuple(numbers.tolist()),
+            self.device,
         )
 
     def __repr__(self) -> str:
@@ -282,6 +322,41 @@ class Basis:
             f"{type(self).__name__}(elements={list(self.shells)}, nsh={nsh}, "
             f"spherical={self.spherical})"
         )
+
+
+@lru_cache(maxsize=256)
+def _layout(
+    element_shells: ElementShells,
+    spherical: bool,
+    numbers: tuple[int, ...],
+    device: torch.device,
+) -> Layout:
+    """The layout of a structure (see :meth:`Basis.layout`)"""
+    shells = dict(element_shells)
+    missing = sorted(set(numbers) - set(shells) - {0})
+    if missing:
+        raise ValueError(f"The basis has no shells for elements {missing}.")
+
+    atom: list[int] = []
+    angmom: list[int] = []
+    nprim: list[int] = []
+    prim_param: list[int] = []
+    for iat, z in enumerate(numbers):
+        for l, n, first in shells.get(z, ()):  # 0: padding
+            atom.append(iat)
+            angmom.append(l)
+            nprim.append(n)
+            prim_param.extend(range(first, first + n))
+
+    return Layout(
+        nat=len(numbers),
+        shell_atom=np.array(atom, dtype=np.int64),
+        shell_angmom=np.array(angmom, dtype=np.int64),
+        shell_nprim=np.array(nprim, dtype=np.int64),
+        prim_param=np.array(prim_param, dtype=np.int64),
+        spherical=spherical,
+        device=device,
+    )
 
 
 @dataclass(frozen=True, eq=False, repr=False)
@@ -359,6 +434,11 @@ class Layout:
         return np.cumsum(self.shell_nprim) - self.shell_nprim
 
     @cached_property
+    def prim_loc(self) -> np.ndarray:
+        """Index of the first primitive of each shell and ``nprim``"""
+        return np.concatenate([self.shell_first_prim, [self.nprim]])
+
+    @cached_property
     def ao_to_param(self) -> Tensor:
         """Basis parameter of the first primitive of each AO's shell"""
         return self._per_ao(self.prim_param[self.shell_first_prim])
@@ -366,6 +446,36 @@ class Layout:
     def _per_ao(self, per_shell: np.ndarray) -> Tensor:
         per_ao = np.repeat(per_shell, self.shell_nao)
         return torch.as_tensor(per_ao, dtype=torch.long, device=self.device)
+
+    def aos(self, shells: range) -> slice:
+        """AOs of consecutive shells"""
+        return slice(
+            int(self.ao_loc[shells.start]), int(self.ao_loc[shells.stop])
+        )
+
+    def shell_pairs(self, atom_pairs: np.ndarray) -> np.ndarray:
+        """
+        Pairs of a shell of the first and a shell of the second atom of each
+        atom pair, shape ``(npairs, 2)``
+        """
+        nshell = np.bincount(self.shell_atom, minlength=self.nat)
+        return _member_pairs(atom_pairs, nshell)
+
+    def uncontracted_pairs(self, shell_pairs: np.ndarray) -> np.ndarray:
+        """
+        Pairs of shells of :attr:`Basis.uncontracted` (one per primitive) that
+        make up the given shell pairs, shape ``(npairs, 2)``
+        """
+        return _member_pairs(shell_pairs, self.shell_nprim)
+
+    def uncontracted_shells(self, shells: range) -> range:
+        """
+        Shells of :attr:`Basis.uncontracted` (one per primitive) that make up
+        consecutive shells of this layout
+        """
+        return range(
+            int(self.prim_loc[shells.start]), int(self.prim_loc[shells.stop])
+        )
 
     @cached_property
     def uao_to_ao(self) -> Tensor:
@@ -458,3 +568,25 @@ class Layout:
 
 def _to_numpy(x: Tensor) -> np.ndarray:
     return x.detach().to(device="cpu", dtype=torch.float64).numpy()
+
+
+def _member_pairs(pairs: np.ndarray, size: np.ndarray) -> np.ndarray:
+    """
+    All pairs of members of the groups in each pair of groups, where the
+    groups consist of consecutive members (`size` of each group)
+    """
+    first = np.cumsum(size) - size
+    bra, ket = pairs[:, 0], pairs[:, 1]
+
+    # for each member pair: its pair of groups and its index within them
+    npairs = size[bra] * size[ket]
+    group = np.repeat(np.arange(len(pairs)), npairs)
+    index = np.arange(npairs.sum()) - np.repeat(
+        np.cumsum(npairs) - npairs, npairs
+    )
+
+    nket = size[ket][group]
+    return np.stack(
+        [first[bra][group] + index // nket, first[ket][group] + index % nket],
+        axis=-1,
+    )

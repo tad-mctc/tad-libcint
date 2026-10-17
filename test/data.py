@@ -56,6 +56,16 @@ OH = Structure(numbers=NUMBERS[:2], positions=POSITIONS[:2])
 
 METHANE = Structure(numbers=METHANE_NUMBERS, positions=METHANE_POSITIONS)
 
+_DIMER_ORDER = [0, 3, 1, 4, 2, 5]  # interleaved: the far pairs are scattered
+
+DIMER = Structure(
+    numbers=torch.cat([NUMBERS, NUMBERS])[_DIMER_ORDER],
+    positions=torch.cat(
+        [POSITIONS, POSITIONS + torch.tensor([0.0, 0.0, 30.0], dtype=DTYPE)]
+    )[_DIMER_ORDER],
+)
+"""Two water molecules beyond the screening distance of the test basis"""
+
 ShellSpec = tuple[int, list[float], list[float]]
 """Angular momentum, exponents and coefficients of a shell"""
 
@@ -86,7 +96,11 @@ def make_shells(
     """Shells of every element from plain numbers"""
     return {
         z: [
-            Shell(l, torch.tensor(a, dtype=DTYPE), torch.tensor(c, dtype=DTYPE))
+            Shell(
+                angmom=l,
+                alphas=torch.tensor(a, dtype=DTYPE),
+                coeffs=torch.tensor(c, dtype=DTYPE),
+            )
             for l, a, c in shells
         ]
         for z, shells in spec.items()

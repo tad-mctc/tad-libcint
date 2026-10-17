@@ -17,6 +17,12 @@
 [tool.pytest.ini_options]
 addopts = "--doctest-modules"
 testpaths = ["test"]
+# pytest's defaults, plus the vendored C libraries (`--doctest-modules` would
+# import their Python examples and scripts)
+norecursedirs = [
+  "*.egg", ".*", "_darcs", "build", "CVS", "dist", "node_modules", "venv",
+  "{arch}", "libs",
+]
 markers = [
   "grad: Marks tests which perform 'gradcheck' evaluations, this can be slow.",
   "large: Marks tests for large molecules, this can be slow.",

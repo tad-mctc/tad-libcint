@@ -65,7 +65,8 @@ This interface was mainly written for the calculation of integrals within *[grim
 
 A `Basis` holds the shells of every element: their angular momenta, exponents and contraction coefficients.
 The atoms are passed to every integral call as a [tad-mctc](https://github.com/tad-mctc/tad-mctc) `Structure` (atomic numbers and positions in Bohr), so one basis serves all conformers of a molecule as well as different molecules.
-Contraction coefficients are used as given, i.e., they must include the normalization of the primitives.
+Contraction coefficients are used as given, i.e., they must include the normalization in libcint's convention (the radial part times a real spherical harmonic with unit norm).
+Coefficients that normalize the Cartesian function $x^l e^{-\alpha r^2}$ differ by a factor of $\sqrt{4\pi/(2l+1)}$; `basis.normalized()` scales every shell to unit self-overlap instead.
 
 ```python
 import torch
@@ -74,16 +75,25 @@ from tad_libcint import Basis, Shell, int1e, overlap
 
 dd = {"dtype": torch.double}
 
+
+def shell(angmom, alphas, coeffs):
+    return Shell(
+        angmom=angmom,
+        alphas=torch.tensor(alphas, **dd),
+        coeffs=torch.tensor(coeffs, **dd),
+    )
+
+
 # STO-3G shells of each element: angular momentum, exponents, coefficients
 # (coefficients include the normalization in libcint's convention)
 shells = {
     1: [
-        Shell(0, torch.tensor([3.42525, 0.623914, 0.168855], **dd), torch.tensor([0.981707, 0.949464, 0.295906], **dd)),
+        shell(0, [3.42525, 0.623914, 0.168855], [0.981707, 0.949464, 0.295906]),
     ],
     8: [
-        Shell(0, torch.tensor([130.709, 23.8089, 6.44361], **dd), torch.tensor([15.0727, 14.5777, 4.54323], **dd)),
-        Shell(0, torch.tensor([5.03315, 1.1696, 0.380389], **dd), torch.tensor([-0.848697, 1.1352, 0.856753], **dd)),
-        Shell(1, torch.tensor([5.03315, 1.1696, 0.380389], **dd), torch.tensor([3.42907, 2.15629, 0.341592], **dd)),
+        shell(0, [130.709, 23.8089, 6.44361], [15.0727, 14.5777, 4.54323]),
+        shell(0, [5.03315, 1.1696, 0.380389], [-0.848697, 1.1352, 0.856753]),
+        shell(1, [5.03315, 1.1696, 0.380389], [3.42907, 2.15629, 0.341592]),
     ],
 }
 
@@ -92,12 +102,13 @@ water = Structure(
     positions=torch.tensor([[0.0, 0.0, 0.22], [0.0, 1.43, -0.89], [0.0, -1.43, -0.89]], **dd),
 )
 
-basis = Basis(shells)
+basis = Basis(shells=shells)
 s = overlap(basis, water)  # (nao, nao)
 dipole = int1e("j", basis, water)  # (3, nao, nao), about each ket's atom
 ```
 
 Gradients with respect to positions, exponents (`basis.alphas`) and coefficients (`basis.coeffs`) are available through autograd and are computed with *libcint*'s derivative integrals.
+`Shell` and `Basis` are [tad-mctc](https://github.com/tad-mctc/tad-mctc) `Node`s, like `Structure`: `basis.to(device)` converts them, and they pass through `torch.func` transforms (e.g. `jacrev` with respect to a whole basis).
 The exponents and coefficients are shared by all atoms of an element.
 
 Periodic structures (with a `lattice`) are not supported yet and raise an error.

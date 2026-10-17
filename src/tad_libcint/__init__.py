@@ -30,8 +30,8 @@ positions):
 >>> from tad_mctc.io.structure import Structure
 >>> from tad_libcint import Basis, Shell, int1e
 >>> dd = {"dtype": torch.double}
->>> h = [Shell(0, torch.tensor([1.0], **dd), torch.tensor([2.52647511], **dd))]
->>> basis = Basis({1: h})
+>>> alpha, coeff = torch.tensor([1.0], **dd), torch.tensor([2.52647511], **dd)
+>>> basis = Basis(shells={1: [Shell(angmom=0, alphas=alpha, coeffs=coeff)]})
 >>> numbers = torch.tensor([1, 1])
 >>> positions = torch.tensor([[0.0, 0.0, 0.0], [0.0, 0.0, 1.4]], **dd)
 >>> h2 = Structure(numbers=numbers, positions=positions)

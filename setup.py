@@ -56,6 +56,20 @@ class CMakeBuildExt(build_ext):
         jobs = str(os.cpu_count() or 1)
         self.spawn(["cmake", "--build", str(build_dir), "--parallel", jobs])
 
+    def copy_extensions_to_source(self) -> None:
+        # Editable installs (and `--inplace` builds) copy every extension next
+        # to its sources. The extension is only a placeholder that does not
+        # exist, so copy the libraries that CMake built in its place.
+        build_py = self.get_finalized_command("build_py")
+        for ext in self.extensions:
+            package = ext.name.rpartition(".")[0]
+            source_dir = Path(build_py.get_package_dir(package))
+            build_dir = (
+                Path(self.build_lib) / self.get_ext_filename(ext.name)
+            ).parent
+            for library in build_dir.glob("lib*_tad.*"):
+                self.copy_file(str(library), str(source_dir / library.name))
+
 
 setup(
     # the libraries are no Python extension; the name only sets their directory

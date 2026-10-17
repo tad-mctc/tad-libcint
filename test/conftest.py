@@ -32,7 +32,7 @@ from .data import DTYPE, METHANE, NUMBERS, POSITIONS, WATER, element_shells
 @pytest.fixture(params=[True, False], ids=["sph", "cart"])
 def basis(request: pytest.FixtureRequest) -> Basis:
     """Basis of all test elements in spherical and cartesian AOs"""
-    return Basis(element_shells(), spherical=request.param)
+    return Basis(shells=element_shells(), spherical=request.param)
 
 
 @pytest.fixture
