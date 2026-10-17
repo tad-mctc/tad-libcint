@@ -1,7 +1,12 @@
 # Periodic integrals: investigation
 
 Status: investigation (branch `feature/periodic`), no library changes yet.
-Prototype: [`periodic_prototype.py`](periodic_prototype.py).
+Prototype: [`periodic_prototype.py`](periodic_prototype.py). It needs tad-mctc ≥ 0.10
+(`neighbor.images`), PySCF with `pbc`, and the in-tree build on the path, e.g.
+
+```console
+PYTHONPATH=src:../tad-mctc/src python notes/periodic_prototype.py
+```
 
 ## What is needed
 
@@ -123,7 +128,14 @@ real, Γ-first port of `PBCnr2c_drv`.
   - Complex `exp(i k·T)` would give k-points later.
 - Duplicated ket atoms in `atm/bas/env` (PySCF's `conc_env`). `Layout` produces them.
 - Screening: a CSR list of images per shell pair, from a periodic pair search (radii in quadrature).
-- The hermitian shortcut stays valid for symmetric operators: an inversion-symmetric image set gives `Σ_T A(T) = (Σ_T A(T))ᵀ`.
+- The hermitian shortcut, mirroring the lower triangle (and `_grad_positions`' `symmetric`), holds only for **even** weights. For a symmetric operator, `A(-T) = A(T)ᵀ`, so over an inversion-symmetric image set:
+  - `Σ_T A(T)` is symmetric.
+  - `Σ_T n_T A(T)` is **antisymmetric**: checked with the prototype, `|W + Wᵀ| ≈ 1e-17` against `|W| ≈ 7e-3`.
+
+  The lattice-derivative weights therefore need the full block, or an antisymmetric mirror.
+- **No libcint optimizer, or none built for the central cell.** A `CINTOpt` caches geometry-dependent pair data (see the comment in `library.int2c`). Once the ket's coordinates are shifted inside `env`, an optimizer built beforehand is stale and gives silently wrong numbers. PySCF's `intor_cross` passes a NULL optimizer for this reason. Measure the cost of going without, or build the pair data per image.
+
+  The ghost-supercell prototype cannot catch this: every image there is a real atom with its own coordinates.
 
 Memory stays `nw × ncomp × nao²`, independent of the number of images.
 
