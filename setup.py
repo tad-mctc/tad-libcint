@@ -23,10 +23,16 @@ Setup for C Extension.
 
 import os
 import shlex
+import sys
 from pathlib import Path
 
 from setuptools import Extension, setup
 from setuptools.command.build_ext import build_ext
+
+try:
+    from setuptools.command.bdist_wheel import bdist_wheel
+except ImportError:  # setuptools < 70.1
+    from wheel.bdist_wheel import bdist_wheel
 
 LIB_DIR = Path(__file__).resolve().parent / "src" / "tad_libcint" / "libs"
 
@@ -36,6 +42,15 @@ CMAKE_ARGS = [
     "-DCMAKE_BUILD_TYPE=Release",
     *shlex.split(os.environ.get("CMAKE_ARGS", "")),
 ]
+
+# On Windows, CMake defaults to Visual Studio, but libcint needs a C99
+# compiler (complex numbers): MinGW-w64's GCC, unless chosen otherwise
+if (
+    sys.platform == "win32"
+    and "CMAKE_GENERATOR" not in os.environ
+    and not any(arg.startswith("-G") for arg in CMAKE_ARGS)
+):
+    CMAKE_ARGS.append("-GMinGW Makefiles")
 
 
 class CMakeBuildExt(build_ext):
@@ -50,6 +65,8 @@ class CMakeBuildExt(build_ext):
                 f"-S{LIB_DIR}",
                 f"-B{build_dir}",
                 f"-DCMAKE_LIBRARY_OUTPUT_DIRECTORY={extdir}",
+                # DLLs are runtime artifacts
+                f"-DCMAKE_RUNTIME_OUTPUT_DIRECTORY={extdir}",
                 *CMAKE_ARGS,
             ]
         )
@@ -71,8 +88,19 @@ class CMakeBuildExt(build_ext):
                 self.copy_file(str(library), str(source_dir / library.name))
 
 
+class PlatformWheel(bdist_wheel):
+    """
+    One wheel per platform for all Python versions (``py3-none-<platform>``):
+    the libraries are loaded with ctypes and do not use Python's C API.
+    """
+
+    def get_tag(self) -> tuple[str, str, str]:
+        platform = super().get_tag()[2]
+        return "py3", "none", platform
+
+
 setup(
     # the libraries are no Python extension; the name only sets their directory
     ext_modules=[Extension("tad_libcint._libraries", sources=[])],
-    cmdclass={"build_ext": CMakeBuildExt},
+    cmdclass={"build_ext": CMakeBuildExt, "bdist_wheel": PlatformWheel},
 )

@@ -90,7 +90,12 @@ target_link_libraries(cgto PRIVATE cint m)
 
 if(ENABLE_OPENMP)
   find_package(OpenMP)
-  if(OpenMP_C_FOUND)
+  if(OpenMP_C_FOUND AND MINGW)
+    # The imported target links the import library of libgomp's DLL, which
+    # bypasses `-static` (see below); the flag alone links libgomp statically.
+    target_compile_options(cgto PRIVATE ${OpenMP_C_FLAGS})
+    target_link_options(cgto PRIVATE ${OpenMP_C_FLAGS})
+  elseif(OpenMP_C_FOUND)
     target_link_libraries(cgto PRIVATE OpenMP::OpenMP_C)
   endif()
 endif()
@@ -99,4 +104,15 @@ endif()
 foreach(target cint cgto)
   set_target_properties(${target} PROPERTIES
     OUTPUT_NAME "${target}${TAD_LIBRARY_SUFFIX}")
+
+  # `.so` also on macOS (instead of `.dylib`), like Python's own extensions
+  if(NOT WIN32)
+    set_target_properties(${target} PROPERTIES SUFFIX ".so")
+  endif()
+
+  # Python (>= 3.8) does not search the PATH for the DLLs a DLL depends on,
+  # so MinGW's runtime (libgcc, libgomp, libwinpthread) is linked statically
+  if(MINGW)
+    target_link_options(${target} PRIVATE -static)
+  endif()
 endforeach()

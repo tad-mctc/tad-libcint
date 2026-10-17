@@ -1,0 +1,73 @@
+name: Tests (macOS arm)
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths-ignore:
+      - "doc*/**"
+      - "./*.ya?ml"
+      - "**/*.md"
+      - "**/*.rst"
+
+  pull_request:
+    paths-ignore:
+      - "doc*/**"
+      - "./*.ya?ml"
+      - "**/*.md"
+      - "**/*.rst"
+
+  workflow_dispatch:
+
+jobs:
+  main:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+        # only test newest version of torch
+        torch-version: ["2.14.1"]
+
+    runs-on: ${{ matrix.os }}
+
+    permissions:
+      contents: read
+
+    # no login shell: it puts Homebrew's Python before the one set up below
+    defaults:
+      run:
+        shell: bash {0}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Checkout submodules
+        run: git submodule update --init --recursive
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install tox
+
+      - name: Determine TOXENV
+        run: echo "TOXENV=py$(echo ${{ matrix.python-version }} | tr -d '.')-torch$(echo ${{ matrix.torch-version }} | tr -d '.')" >> $GITHUB_ENV
+
+      - name: Print TOXENV
+        run: echo "TOXENV is set to '${TOXENV}'."
+        env:
+          TOXENV: ${{ env.TOXENV }}
+
+      - name: Unittests with tox
+        run: tox -e $TOXENV
+        env:
+          TOXENV: ${{ env.TOXENV }}

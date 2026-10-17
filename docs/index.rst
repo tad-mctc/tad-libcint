@@ -21,6 +21,14 @@ PyTorch-based Libcint Interface
     :target: https://github.com/tad-mctc/tad-libcint/actions/workflows/ubuntu.yaml
     :alt: Tests Ubuntu
 
+.. image:: https://github.com/tad-mctc/tad-libcint/actions/workflows/macos-arm.yaml/badge.svg
+    :target: https://github.com/tad-mctc/tad-libcint/actions/workflows/macos-arm.yaml
+    :alt: Tests macOS
+
+.. image:: https://github.com/tad-mctc/tad-libcint/actions/workflows/windows.yaml/badge.svg
+    :target: https://github.com/tad-mctc/tad-libcint/actions/workflows/windows.yaml
+    :alt: Tests Windows
+
 .. image:: https://readthedocs.org/projects/tad-libcint/badge/?version=latest
     :target: https://tad-mctc.readthedocs.io
     :alt: Documentation Status

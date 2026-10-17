@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import ctypes
 import math
+import sys
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
@@ -75,11 +76,15 @@ FRAC_CHARGE_NUC = 3
 """Nuclear model for (fractional) point charges read from ``env``."""
 
 
+_SUFFIX = ".dll" if sys.platform == "win32" else ".so"
+"""File suffix of the libraries (``.so`` also on macOS, see CMakeLists.txt)."""
+
+
 class LazySharedLibrary:
     """Shared object that is only loaded once one of its symbols is accessed"""
 
     def __init__(self, name: str, directory: Path) -> None:
-        self.path = directory / f"lib{name}.so"
+        self.path = directory / f"lib{name}{_SUFFIX}"
         self._lib: ctypes.CDLL | None = None
 
     def __getattr__(self, symbol: str) -> Any:
