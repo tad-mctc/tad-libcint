@@ -1,0 +1,94 @@
+name: Tests (Windows)
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths-ignore:
+      - "doc*/**"
+      - "./*.ya?ml"
+      - "**/*.md"
+      - "**/*.rst"
+
+  pull_request:
+    paths-ignore:
+      - "doc*/**"
+      - "./*.ya?ml"
+      - "**/*.md"
+      - "**/*.rst"
+
+  workflow_dispatch:
+
+jobs:
+  main:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+        # only test newest version of torch
+        torch-version: ["2.14.1"]
+
+    runs-on: ${{ matrix.os }}
+
+    permissions:
+      contents: read
+
+    defaults:
+      run:
+        shell: bash {0}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Checkout submodules
+        run: git submodule update --init --recursive
+
+      # libcint needs a C99 compiler, so GCC of MinGW-w64 instead of MSVC
+      - name: Set up MinGW-w64
+        id: msys2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-make
+
+      - name: Add MinGW-w64 to the PATH
+        run: echo "${MSYS2_LOCATION}\ucrt64\bin" >> "$GITHUB_PATH"
+        env:
+          MSYS2_LOCATION: ${{ steps.msys2.outputs.msys2-location }}
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install tox
+
+      - name: Determine TOXENV
+        run: echo "TOXENV=py$(echo ${{ matrix.python-version }} | tr -d '.')-torch$(echo ${{ matrix.torch-version }} | tr -d '.')" >> $GITHUB_ENV
+
+      - name: Print TOXENV
+        run: echo "TOXENV is set to '${TOXENV}'."
+        env:
+          TOXENV: ${{ env.TOXENV }}
+
+      - name: Unittests with tox
+        run: tox -e $TOXENV
+        env:
+          TOXENV: ${{ env.TOXENV }}
+
+      # the libraries must only depend on system DLLs (see CMakeLists.txt)
+      - name: Show the DLLs the libraries depend on
+        if: always()
+        run: objdump -p .tox/${TOXENV}/Lib/site-packages/tad_libcint/*.dll | grep -E "^.*\.dll:|DLL Name"
+        env:
+          TOXENV: ${{ env.TOXENV }}

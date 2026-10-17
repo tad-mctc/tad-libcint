@@ -96,9 +96,18 @@ if(ENABLE_OPENMP)
 endif()
 
 
-# `.so` also on macOS (instead of `.dylib`), like Python's own extensions
 foreach(target cint cgto)
   set_target_properties(${target} PROPERTIES
-    OUTPUT_NAME "${target}${TAD_LIBRARY_SUFFIX}"
-    SUFFIX ".so")
+    OUTPUT_NAME "${target}${TAD_LIBRARY_SUFFIX}")
+
+  # `.so` also on macOS (instead of `.dylib`), like Python's own extensions
+  if(NOT WIN32)
+    set_target_properties(${target} PROPERTIES SUFFIX ".so")
+  endif()
+
+  # Python (>= 3.8) does not search the PATH for the DLLs a DLL depends on,
+  # so MinGW's runtime (libgcc, libgomp, libwinpthread) is linked statically
+  if(MINGW)
+    target_link_options(${target} PRIVATE -static)
+  endif()
 endforeach()

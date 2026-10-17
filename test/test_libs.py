@@ -46,12 +46,15 @@ def test_load() -> None:
 
 def test_unique_library_names() -> None:
     """The libraries are suffixed and do not shadow PySCF's libraries."""
+    suffix = tad_libcint.CINT.path.suffix
+    assert suffix == (".dll" if sys.platform == "win32" else ".so")
     for lib in (tad_libcint.CINT, tad_libcint.CGTO):
-        assert lib.path.name.endswith("_tad.so")
+        assert lib.path.name.endswith(f"_tad{suffix}")
         assert lib.path.is_file()
 
-    names = {p.name for p in Path(tad_libcint.__file__).parent.glob("lib*.so*")}
-    assert names == {"libcint_tad.so", "libcgto_tad.so"}
+    directory = Path(tad_libcint.__file__).parent
+    names = {p.name for p in directory.glob(f"lib*{suffix}*")}
+    assert names == {f"libcint_tad{suffix}", f"libcgto_tad{suffix}"}
 
 
 @pytest.mark.parametrize("component", [-1, 3])
