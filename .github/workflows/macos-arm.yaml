@@ -35,9 +35,10 @@ jobs:
     permissions:
       contents: read
 
+    # no login shell: it puts Homebrew's Python before the one set up below
     defaults:
       run:
-        shell: bash -l {0}
+        shell: bash {0}
 
     steps:
       - name: Checkout code
