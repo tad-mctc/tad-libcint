@@ -96,7 +96,9 @@ if(ENABLE_OPENMP)
 endif()
 
 
+# `.so` also on macOS (instead of `.dylib`), like Python's own extensions
 foreach(target cint cgto)
   set_target_properties(${target} PROPERTIES
-    OUTPUT_NAME "${target}${TAD_LIBRARY_SUFFIX}")
+    OUTPUT_NAME "${target}${TAD_LIBRARY_SUFFIX}"
+    SUFFIX ".so")
 endforeach()
