@@ -34,7 +34,8 @@ markers = [
 
 
 [tool.cibuildwheel]
-build = "cp310-* cp311-* cp312-* cp313-* cp314-*"
+# one wheel for all Python versions (see `PlatformWheel` in setup.py)
+build = "cp312-*"
 environment = { PIP_EXTRA_INDEX_URL="https://download.pytorch.org/whl/cpu" }
 manylinux-x86_64-image = "manylinux2014"
 skip = "*musllinux*"

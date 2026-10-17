@@ -6,7 +6,7 @@
     <td>
       <img src="https://img.shields.io/badge/Python-3.10%20|%203.11%20|%203.12%20|%203.13%20|%203.14-blue.svg" alt="Python Versions"/>
       <img src="https://img.shields.io/badge/PyTorch-%3E=2.6.0-blue.svg" alt="PyTorch Versions"/>
-      <img src="https://img.shields.io/badge/OS-Linux-blue.svg" alt="Operating Systems">
+      <img src="https://img.shields.io/badge/OS-Linux%20|%20macOS%20|%20Windows-blue.svg" alt="Operating Systems">
     </td>
   </tr>
   <tr>
@@ -28,6 +28,12 @@
     <td>
       <a href="https://github.com/tad-mctc/tad-libcint/actions/workflows/ubuntu.yaml">
         <img src="https://github.com/tad-mctc/tad-libcint/actions/workflows/ubuntu.yaml/badge.svg" alt="Tests Ubuntu"/>
+      </a>
+      <a href="https://github.com/tad-mctc/tad-libcint/actions/workflows/macos-arm.yaml">
+        <img src="https://github.com/tad-mctc/tad-libcint/actions/workflows/macos-arm.yaml/badge.svg" alt="Tests macOS"/>
+      </a>
+      <a href="https://github.com/tad-mctc/tad-libcint/actions/workflows/windows.yaml">
+        <img src="https://github.com/tad-mctc/tad-libcint/actions/workflows/windows.yaml/badge.svg" alt="Tests Windows"/>
       </a>
       <a href="https://github.com/tad-mctc/tad-libcint/actions/workflows/release.yaml">
         <img src="https://github.com/tad-mctc/tad-libcint/actions/workflows/release.yaml/badge.svg" alt="Build Status"/>
@@ -159,6 +165,9 @@ The `tad-libcint` package can be obtained from pip.
 pip install tad-libcint
 ```
 
+Wheels are available for Linux (x86_64), macOS (Apple silicon) and Windows (x86_64), the platforms of PyTorch's wheels.
+One wheel serves all supported Python versions.
+
 ### Build from source
 
 You can also build the Python wheels from source.
@@ -180,12 +189,14 @@ git submodule update --remote
 ```
 
 The build requires CMake (≥ 3.18) and a C compiler (with OpenMP for parallel integral evaluation).
+On macOS, Apple's Clang (Xcode Command Line Tools) builds without OpenMP.
+On Windows, *libcint* needs the GCC of [MinGW-w64](https://www.msys2.org/) (e.g., the MSYS2 packages `mingw-w64-ucrt-x86_64-gcc` and `mingw-w64-ucrt-x86_64-make` on the `PATH`), since MSVC lacks C99 complex numbers; its runtime is linked statically.
 Extra CMake options are passed through the `CMAKE_ARGS` environment variable, e.g., `CMAKE_ARGS="-DBUILD_MARCH_NATIVE=ON" pip install .`.
 
 The compiler is taken from `CC`. Besides GCC, the Intel oneAPI compiler (`icx`) is supported, e.g., after `module load intel`.
 The libraries then find Intel's runtime libraries in the compiler installation, so the compiler environment is not needed at runtime.
 
-All shared libraries carry the suffix `_tad` (`libcint_tad.so`, `libcgto_tad.so`), so that they do not clash with PySCF's libraries of the same name when both packages are used in one process.
+All shared libraries carry the suffix `_tad` (`libcint_tad.so`, `libcgto_tad.so`, or `.dll` on Windows), so that they do not clash with PySCF's libraries of the same name when both packages are used in one process.
 
 #### CIBuildWheel
 
@@ -195,11 +206,7 @@ Building with `cibuildwheel` is as simple as running
 cibuildwheel --platform linux
 ```
 
-For a specific version, use
-
-```console
-CIBW_BUILD="cp312-manylinux_x86_64" CIBW_MANYLINUX_X86_64_IMAGE="manylinux2014" cibuildwheel --platform linux
-```
+This builds one wheel (`py3-none-manylinux_2_17_x86_64`) for all Python versions, as configured in `pyproject.toml`.
 
 #### Conda
 
@@ -219,7 +226,7 @@ python -m build --wheel
 3. Repair the wheels for cross-distribution packaging.
 
 ```console
-auditwheel repair -w wheels --plat manylinux_2_17_x86_64 dist/*-cp310-cp310-linux_x86_64.whl
+auditwheel repair -w wheels --plat manylinux_2_17_x86_64 dist/*-py3-none-linux_x86_64.whl
 ```
 
 4. Or only install this project with `pip` in the environment.
@@ -228,7 +235,7 @@ auditwheel repair -w wheels --plat manylinux_2_17_x86_64 dist/*-cp310-cp310-linu
 pip install .
 ```
 
-## Compatibility <img src="https://img.shields.io/badge/OS-Linux_only-black.svg" alt="Linux only">
+## Compatibility <img src="https://img.shields.io/badge/OS-Linux%20|%20macOS%20|%20Windows-black.svg" alt="Linux, macOS and Windows">
 
 | PyTorch \ Python | 3.10               | 3.11               | 3.12               | 3.13               | 3.14               |
 | ---------------- | ------------------ | ------------------ | ------------------ | ------------------ | ------------------ |
@@ -246,6 +253,8 @@ pip install .
 
 Note that only the latest bug fix version is listed, but all preceding bug fix minor versions are supported.
 For example, although only version 2.7.1 is listed, version 2.7.0 is also supported.
+
+The table refers to Linux. On macOS and Windows, CI tests the newest PyTorch version with all Python versions.
 
 
 ## Development

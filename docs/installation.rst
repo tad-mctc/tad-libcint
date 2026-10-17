@@ -14,6 +14,9 @@ The `tad-libcint` package can be obtained from pip.
 
     pip install tad-libcint
 
+Wheels are available for Linux (x86_64), macOS (Apple silicon) and Windows (x86_64), the platforms of PyTorch's wheels.
+One wheel serves all supported Python versions.
+
 
 Build from source
 ~~~~~~~~~~~~~~~~~
@@ -63,7 +66,7 @@ The example here uses Python 3.10, but we support 3.10-3.14.
 
 .. code::
 
-    auditwheel repair -w wheels --plat manylinux_2_17_x86_64 dist/*-cp310-cp310-linux_x86_64.whl
+    auditwheel repair -w wheels --plat manylinux_2_17_x86_64 dist/*-py3-none-linux_x86_64.whl
 
 5. Or only install this project with ``pip`` in the environment.
 
