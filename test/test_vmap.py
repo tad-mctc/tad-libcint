@@ -175,6 +175,7 @@ def test_screening(
     "name, packed",
     [
         ("ovlp", True),
+        ("ipovlp", True),
         ("r0", True),
         ("r0r0", True),
         ("r0r0", False),

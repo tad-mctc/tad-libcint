@@ -321,18 +321,17 @@ class _Block(NamedTuple):
         pairs = None if self.pairs is None else _sorted(self.pairs[:, ::-1])
         return _Block(self.ket, self.bra, pairs)
 
-    def rows(self, bra: range) -> _Block | None:
+    def rows(self, bra: range) -> _Block:
         """
         The rows of the bra shells `bra`. With `pairs`, only the columns of
-        their shell pairs, and ``None`` without any.
+        their shell pairs (every shell has some: those with the shells of its
+        own atom).
         """
         if self.pairs is None:
             return _Block(bra, self.ket, None)
 
         first, last = np.searchsorted(self.pairs[:, 0], [bra.start, bra.stop])
         pairs = self.pairs[first:last]
-        if len(pairs) == 0:
-            return None
         ket = range(int(pairs[:, 1].min()), int(pairs[:, 1].max()) + 1)
         return _Block(bra, ket, pairs)
 
@@ -777,8 +776,6 @@ class _PerStructure(torch.autograd.Function):
     ) -> tuple[Tensor | None, ...]:
         numbers, *tensors = ctx.saved_tensors
         needs = tuple(ctx.needs_input_grad[2:])
-        if not any(needs):
-            return (None,) * (2 + len(tensors))
 
         # only the outputs with vectors (None: unused) enter the product
         used = tuple(v is not None for v in vectors)
@@ -1357,14 +1354,12 @@ def _row_blocks(
 
     Yields the rows and columns of each row block within `block` and the row
     block. With screening, a row block only spans the columns of its shell
-    pairs, and row blocks without any are skipped (see `_Block.rows`).
+    pairs (see `_Block.rows`).
     """
     bra, ket = layout.aos(block.bra), layout.aos(block.ket)
 
     def fits(start: int, stop: int) -> bool:
         sub = block.rows(range(start, stop))
-        if sub is None:
-            return True
         rows, cols = layout.aos(sub.bra), layout.aos(sub.ket)
         size = ncomp * (rows.stop - rows.start) * (cols.stop - cols.start)
         return size <= _BLOCK_ELEMENTS
@@ -1387,9 +1382,8 @@ def _row_blocks(
 
         sub = block.rows(range(start, stop))
         start = stop
-        if sub is not None:
-            rows = within(layout.aos(sub.bra), bra)
-            yield rows, within(layout.aos(sub.ket), ket), sub
+        rows = within(layout.aos(sub.bra), bra)
+        yield rows, within(layout.aos(sub.ket), ket), sub
 
 
 def _contract(weights: Tensor, derivative: Tensor, side: Side) -> Tensor:

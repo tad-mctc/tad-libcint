@@ -25,9 +25,16 @@ import subprocess
 import sys
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 import tad_libcint
+from tad_libcint.library import (
+    ATM_SLOTS,
+    BAS_SLOTS,
+    PTR_ENV_START,
+    int2c,
+)
 
 
 def test_load() -> None:
@@ -45,6 +52,23 @@ def test_unique_library_names() -> None:
 
     names = {p.name for p in Path(tad_libcint.__file__).parent.glob("lib*.so*")}
     assert names == {"libcint_tad.so", "libcgto_tad.so"}
+
+
+@pytest.mark.parametrize("component", [-1, 3])
+def test_int2c_components_out_of_range(component: int) -> None:
+    """Components beyond those of the integral are refused."""
+    with pytest.raises(ValueError, match="out of 3"):
+        int2c(
+            "int1e_r_sph",
+            (3,),
+            False,
+            shls_slice=(0, 1, 0, 1),
+            components=[0, component],
+            atm=np.zeros((1, ATM_SLOTS), dtype=np.int32),
+            bas=np.zeros((1, BAS_SLOTS), dtype=np.int32),
+            env=np.zeros(PTR_ENV_START),
+            ao_loc=np.array([0, 1], dtype=np.int32),
+        )
 
 
 _TAD = """
