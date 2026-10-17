@@ -90,7 +90,12 @@ target_link_libraries(cgto PRIVATE cint m)
 
 if(ENABLE_OPENMP)
   find_package(OpenMP)
-  if(OpenMP_C_FOUND)
+  if(OpenMP_C_FOUND AND MINGW)
+    # The imported target links the import library of libgomp's DLL, which
+    # bypasses `-static` (see below); the flag alone links libgomp statically.
+    target_compile_options(cgto PRIVATE ${OpenMP_C_FLAGS})
+    target_link_options(cgto PRIVATE ${OpenMP_C_FLAGS})
+  elseif(OpenMP_C_FOUND)
     target_link_libraries(cgto PRIVATE OpenMP::OpenMP_C)
   endif()
 endif()
