@@ -190,7 +190,8 @@ git submodule update --remote
 
 The build requires CMake (≥ 3.18) and a C compiler (with OpenMP for parallel integral evaluation).
 On macOS, Apple's Clang (Xcode Command Line Tools) builds without OpenMP.
-On Windows, *libcint* needs the GCC of [MinGW-w64](https://www.msys2.org/) (e.g., the MSYS2 packages `mingw-w64-ucrt-x86_64-gcc` and `mingw-w64-ucrt-x86_64-make` on the `PATH`), since MSVC lacks C99 complex numbers; its runtime is linked statically.
+On Windows, *libcint* needs the GCC of [MinGW-w64](https://www.msys2.org/), since MSVC lacks C99 complex numbers, e.g., the MSYS2 packages `mingw-w64-ucrt-x86_64-gcc`, `mingw-w64-ucrt-x86_64-libgomp` (OpenMP) and `mingw-w64-ucrt-x86_64-make` on the `PATH`.
+Its runtime (including OpenMP) is linked statically, so the libraries only depend on system DLLs.
 Extra CMake options are passed through the `CMAKE_ARGS` environment variable, e.g., `CMAKE_ARGS="-DBUILD_MARCH_NATIVE=ON" pip install .`.
 
 The compiler is taken from `CC`. Besides GCC, the Intel oneAPI compiler (`icx`) is supported, e.g., after `module load intel`.

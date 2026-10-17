@@ -44,6 +44,11 @@ If you already have the repository, you can update the submodule with
 
     git submodule update --remote
 
+The build requires CMake (≥ 3.18) and a C compiler (with OpenMP for parallel integral evaluation).
+On macOS, Apple's Clang (Xcode Command Line Tools) builds without OpenMP.
+On Windows, *libcint* needs the GCC of `MinGW-w64 <https://www.msys2.org/>`__, since MSVC lacks C99 complex numbers, e.g., the MSYS2 packages ``mingw-w64-ucrt-x86_64-gcc``, ``mingw-w64-ucrt-x86_64-libgomp`` (OpenMP) and ``mingw-w64-ucrt-x86_64-make`` on the ``PATH``.
+The steps below use conda and apply to Linux.
+
 2. Create an environment for building the wheels.
 
 We recommend using a `conda <https://conda.io/>`__ environment to install the package.
