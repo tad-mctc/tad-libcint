@@ -189,7 +189,7 @@ git submodule update --remote
 ```
 
 The build requires CMake (≥ 3.18) and a C compiler (with OpenMP for parallel integral evaluation).
-On macOS, Apple's Clang (Xcode Command Line Tools) builds without OpenMP.
+On macOS, Apple's Clang (Xcode Command Line Tools) builds with OpenMP if Homebrew's libomp is installed (`brew install libomp`). The libraries then use PyTorch's OpenMP runtime, since a second one in the same process aborts, so `torch.set_num_threads` also sets their number of threads. Editable installs find it only with PyTorch in the build environment (`pip install --no-build-isolation -e .`) and otherwise build without OpenMP.
 On Windows, *libcint* needs the GCC of [MinGW-w64](https://www.msys2.org/), since MSVC lacks C99 complex numbers, e.g., the MSYS2 packages `mingw-w64-ucrt-x86_64-gcc`, `mingw-w64-ucrt-x86_64-libgomp` (OpenMP) and `mingw-w64-ucrt-x86_64-make` on the `PATH`.
 Its runtime (including OpenMP) is linked statically, so the libraries only depend on system DLLs.
 Extra CMake options are passed through the `CMAKE_ARGS` environment variable, e.g., `CMAKE_ARGS="-DBUILD_MARCH_NATIVE=ON" pip install .`.
