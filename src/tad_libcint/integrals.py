@@ -381,7 +381,6 @@ def _periodic(
     gamma = kpoints is None
     if isinstance(kpoints, KPoints):
         points, mask = kpoints.points, kpoints.mask
-        assert mask is not None  # filled in by `KPoints`
     else:
         if kpoints is None:
             kpoints = positions.new_zeros((*batch, 0, 3))

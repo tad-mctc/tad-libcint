@@ -24,13 +24,26 @@ from __future__ import annotations
 import pytest
 import torch
 from tad_mctc.io.structure import Structure, pack_structures
-from tad_mctc.kpoints import to_cartesian
+from tad_mctc.kpoints import (
+    KPoints,
+    make_kpoints,
+    pack_kpoints,
+    to_cartesian,
+)
 from torch import Tensor
-from torch.func import jacrev
+from torch.func import jacfwd, jacrev, vmap
 
 from tad_libcint import Basis, int1e, integrals
 
-from .data import DIMER, KFRAC, METHANE, WATER, WATER_CELL, element_shells
+from .data import (
+    DIMER,
+    KFRAC,
+    METHANE,
+    OH_CELL,
+    WATER,
+    WATER_CELL,
+    element_shells,
+)
 
 pytestmark = pytest.mark.skipif(
     not torch.cuda.is_available(), reason="CUDA is not available"
@@ -139,5 +152,60 @@ def test_periodic(kpoints: bool) -> None:
 
     expected = lattice_sums(torch.device("cpu"))
     for out, ref in zip(lattice_sums(CUDA), expected):
+        assert out.device.type == "cuda"
+        assert torch.allclose(out.cpu(), ref)
+
+
+def test_periodic_batch() -> None:
+    """A padded batch of cells with packed k-point grids (built on the
+    device) on CUDA matches the CPU, also under `vmap`."""
+
+    def lattice_sums(device: torch.device) -> list[Tensor]:
+        cells = [WATER_CELL.to(device=device), OH_CELL.to(device=device)]
+        kpoints = []
+        for cell, mesh in zip(cells, [(2, 1, 1), (1, 2, 2)]):
+            assert cell.lattice is not None
+            kpoints.append(make_kpoints(cell.lattice, mesh))
+        batch, packed = pack_structures(cells), pack_kpoints(kpoints)
+        basis = _basis(device)
+
+        def func(structure: Structure, kpts: KPoints) -> Tensor:
+            return int1e("j", basis, structure, kpoints=kpts)
+
+        return [func(batch, packed), vmap(func)(batch, packed)]
+
+    expected = lattice_sums(torch.device("cpu"))
+    for out, ref in zip(lattice_sums(CUDA), expected):
+        assert out.device.type == "cuda"
+        assert torch.allclose(out.cpu(), ref)
+
+
+@pytest.mark.parametrize("kpoints", [False, True], ids=["gamma", "k"])
+def test_periodic_jacobians(kpoints: bool) -> None:
+    """`jacrev` and `jacfwd` w.r.t. positions and lattice of a cell on CUDA
+    match the CPU."""
+
+    def jacobians(device: torch.device) -> list[Tensor]:
+        cell = WATER_CELL.to(device=device)
+        assert cell.lattice is not None
+        basis = _basis(device)
+        kcart = (
+            to_cartesian(KFRAC.to(device), cell.lattice) if kpoints else None
+        )
+
+        def func(positions: Tensor, lattice: Tensor) -> Tensor:
+            structure = cell.replace(positions=positions, lattice=lattice)
+            out = int1e("j", basis, structure, kpoints=kcart)
+            return torch.view_as_real(out) if out.is_complex() else out
+
+        args = (cell.positions, cell.lattice)
+        return [
+            jac(func, argnums=argnums)(*args)
+            for jac in (jacrev, jacfwd)
+            for argnums in (0, 1)
+        ]
+
+    expected = jacobians(torch.device("cpu"))
+    for out, ref in zip(jacobians(CUDA), expected):
         assert out.device.type == "cuda"
         assert torch.allclose(out.cpu(), ref)
