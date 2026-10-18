@@ -154,6 +154,13 @@ jac = vmap(jacrev(dipole, argnums=1))(batch, batch.positions)
 Since *libcint* is C code, a batch is evaluated one structure after another.
 Combining very different structures in one batch wastes memory on padding.
 
+### Threads
+
+The integrals are evaluated in parallel over shell pairs with OpenMP.
+On Linux and macOS, the libraries of the wheels use PyTorch's OpenMP runtime and hence its number of threads, set with `torch.set_num_threads` or the `OMP_NUM_THREADS` environment variable (by default, one thread per physical core).
+On Linux, `MKL_NUM_THREADS` takes precedence over `OMP_NUM_THREADS` for PyTorch.
+On Windows, the libraries have an OpenMP runtime of their own, which only follows `OMP_NUM_THREADS` (by default, one thread per logical core).
+
 
 ## Installation
 

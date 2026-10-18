@@ -17,6 +17,14 @@ The `tad-libcint` package can be obtained from pip.
 Wheels are available for Linux (x86_64), macOS (Apple silicon) and Windows (x86_64), the platforms of PyTorch's wheels.
 One wheel serves all supported Python versions.
 
+Threads
+~~~~~~~
+
+The integrals are evaluated in parallel over shell pairs with OpenMP.
+On Linux and macOS, the libraries of the wheels use PyTorch's OpenMP runtime and hence its number of threads, set with ``torch.set_num_threads`` or the ``OMP_NUM_THREADS`` environment variable (by default, one thread per physical core).
+On Linux, ``MKL_NUM_THREADS`` takes precedence over ``OMP_NUM_THREADS`` for PyTorch.
+On Windows, the libraries have an OpenMP runtime of their own, which only follows ``OMP_NUM_THREADS`` (by default, one thread per logical core).
+
 
 Build from source
 ~~~~~~~~~~~~~~~~~
