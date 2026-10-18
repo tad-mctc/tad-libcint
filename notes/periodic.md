@@ -8,24 +8,34 @@ Prototype: [`periodic_prototype.py`](periodic_prototype.py). It needs tad-mctc �
 PYTHONPATH=src:../tad-mctc/src python notes/periodic_prototype.py
 ```
 
+## Decisions
+
+1. **Γ point and k-points.** Complex Bloch weights from the start, with a real fast path at Γ.
+2. **The periodic pair search lives in tad-mctc**, where dxtb can reuse it.
+3. **An accuracy setting, as in other quantum chemistry programs** (PySCF `precision`, tblite `acc`, CP2K `EPS_PGF_ORB`). It replaces the fixed `exp(-60)` and the silent 40 bohr cap.
+4. **1D and 2D periodicity are supported** through the structure's `periodic` mask.
+
 ## What is needed
 
-The consumer is dxtb, which follows tblite. Both work at the Γ point only.
-tblite's periodic H0 (`xtb/h0.f90: get_hamiltonian`) and its `*_lat` integral
-routines (`integral/native/integrals.f90`) build **real-space lattice sums**
-of the molecular integrals:
+The consumer is dxtb, which follows tblite. tblite's periodic H0
+(`xtb/h0.f90: get_hamiltonian`) and its `*_lat` integral routines
+(`integral/native/integrals.f90`) build real-space lattice sums of the
+molecular integrals at Γ. With k-points, these generalise to Bloch sums:
 
 $$
-A_{\mu\nu} = \sum_{\mathbf T} \langle \mu(\mathbf R_i) \,|\, \hat O \,|\, \nu(\mathbf R_j + \mathbf T) \rangle,
+A_{\mu\nu}(\mathbf k) = \sum_{\mathbf T} e^{i \mathbf k \cdot \mathbf T}
+\langle \mu(\mathbf R_i) \,|\, \hat O \,|\, \nu(\mathbf R_j + \mathbf T) \rangle,
 \qquad \mathbf T = \mathbf n \cdot \mathbf h,\ \mathbf n \in \mathbb Z^3
 $$
 
-with `h` holding the lattice vectors as rows (tad-mctc convention). Required:
+Here `h` holds the lattice vectors as rows (tad-mctc convention), `n` runs
+over the periodic axes only, and the phase convention is PySCF's (verified).
+At Γ, `A` is real.
 
 | Integral | tad-libcint name | Note |
 | --- | --- | --- |
-| overlap | `"ovlp"` | symmetric |
-| dipole | `"j"` | about the ket's image, not symmetric |
+| overlap | `"ovlp"` | Hermitian at every k |
+| dipole | `"j"` | about the ket's image, not Hermitian |
 | quadrupole | `"jj"` (packed) | as now: lower triangle, not traceless (dxtb removes the trace) |
 | gradients | positions, **lattice/strain** | tblite: `gradient` and `sigma` in `get_hamiltonian_gradient` |
 | gradients | exponents, coefficients | for dxtb's parameter fits, as in the molecular case |
@@ -34,7 +44,6 @@ Not needed, and these should raise for periodic structures:
 
 - `"r0"`, `"r0r0"`: a moment about a fixed origin, summed over images, is not translation invariant (the position operator is ill-defined in a crystal).
 - `"nuc"`: the sum over the nuclei's images diverges and needs Ewald summation.
-- k-points: tblite and dxtb use Γ only. PySCF's Bloch-phase weights are the route if they are ever needed (see below).
 
 ### No new libcint integrals are needed
 
@@ -79,26 +88,33 @@ Improvements worth making (tblite's periodic code is not final):
 
 - `conc_env(cell1, cell2)` duplicates atoms and shells, so that the ket shells refer to their own atom copies. Shifting those coordinates must not move a bra on the same atom.
 - `Ls = cell.get_lattice_Ls(rcut)`, with `rcut` estimated from `cell.precision`.
-- OpenMP over ket shells, each thread with its own copy of `env`. For each image, the ket atom's coordinates are shifted, libcint is called, and the result is added with the weight `expkL[k, L] = exp(i k·L)`.
+- OpenMP over ket shells, each thread with its own copy of `env`. For each image, the ket atom's coordinates are shifted, libcint is called, and the result is added with the weight `expkL[k, L] = exp(i k·L)`. The integrals of all images of a shell pair are buffered and contracted with the phases in one matrix product, so the libcint cost is shared by all k-points.
 - At Γ all weights are 1 and the result is taken real. For `kderiv`, the weights become `i L exp(i k·L)`: the same driver with other weights.
 - The screened variant takes a per-shell-pair image list (`NeighborListOpt`).
+- **Accuracy:** `cell.precision` (default 1e-8) → `_estimate_rcut(alpha, l, c, precision)` per shell. This solves `c² r^(2l+2) e^(-α r²/2) ≈ precision` from the overlap of a function with its image, with a penalty factor for kinetic integrals. `rcut_by_shells` gives per-shell radii, and `estimate_rcut` takes the maximum.
+- **Low dimensions:** with `cell.dimension = 2`, the default `low_dim_ft_type` still sums the 1e integrals over all **three** lattice vectors (`tools/pbc.py: get_lattice_Ls`, "necessary for atoms near the boundary") and relies on a large vacuum. Only `low_dim_ft_type="inf_vacuum"` restricts the sum to the periodic axes. With a short vacuum vector the two differ: 1.5e-3 in the prototype's overlap. We follow the `inf_vacuum` semantics, in which the mask decides.
 
 ## Prototype and results
 
 `periodic_prototype.py` uses the **unchanged** library. It replicates the
 cell's atoms at all integer shifts (ghost supercell), calls `int1e`, keeps
 the rows of the central cell and folds the image columns onto their central
-AOs. The test case is a triclinic two-atom cell with s and p shells,
-343 images, and a 14 bohr cutoff from libcint's own `exp(-60)` threshold.
+AOs, with Bloch phases for k-points. The test case is a triclinic two-atom
+cell with s and p shells, 343 images in 3D, and a 14 bohr cutoff from
+libcint's own `exp(-60)` threshold.
 
 | Check | Result |
 | --- | --- |
-| overlap vs PySCF `cell.pbc_intor("int1e_ovlp")` (precision 1e-16) | 2e-16 |
+| Γ overlap vs PySCF `cell.pbc_intor("int1e_ovlp")` (precision 1e-16) | 2e-16 |
 | `"j"`, `"jj"`: ket-image fold vs tblite's convention (bra translated) | 2e-16 |
-| overlap symmetric / `"j"` not | 1e-17 / 2e-2 |
+| Γ overlap symmetric / `"j"` not | 1e-17 / 2e-2 |
 | atom wrapped into the neighbouring cell | 1e-17 |
 | dE/dR and dE/dh (autograd) vs finite differences, ovlp and `"j"` | ≤ 2e-10 |
 | strain derivative `σ = (dE/dh)ᵀ h + (dE/dR)ᵀ R` vs strained geometries | 1e-10 |
+| overlap at 3 k-points vs PySCF, 3D / 2D / 1D (343 / 49 / 7 images) | 2e-16 each |
+| overlap Hermitian at every k | 1e-17 |
+| `"j"` at k-points: dE/dh vs finite differences (k fixed in fractional coordinates) | 3e-11 |
+| n-weighted Γ overlap `Σ_T n_T S(T)` antisymmetric | 1e-17 (\|W\| ≈ 7e-3) |
 
 The approach is correct, and the lattice gradient comes for free. With image
 positions `R_j + n·h` formed in torch, autograd drives the existing
@@ -117,22 +133,41 @@ images (tad-mctc `build_periodic_shifts`):
 
 ## Proposed design
 
+### API
+
+```python
+int1e(name, basis, structure, *, kpoints=None, precision=1e-?, ...)
+```
+
+- **Lattice and mask.** `structure.lattice` and `structure.periodic` come from tad-mctc's `Structure`, which already fills in the mask.
+- **`kpoints`.** In **fractional (reduced) coordinates**, shape `(nk, 3)`. `None` means Γ: a real result of shape `(*comp, nao, nao)`. Otherwise the result is complex, `(nk, *comp, nao, nao)`.
+  - Fractional k gives `k·T = 2π κ·n`, so the phases are constants. Under strain the Monkhorst–Pack grid moves with the cell, and the lattice derivative only passes through the image positions (verified above).
+  - Cartesian k, as in PySCF's `kpts`, would make the phases depend on the lattice. If wanted, accept it as a separate convenience and convert it once.
+  - k-point components along non-periodic axes must be zero; validate this.
+- **`precision`.** An absolute threshold on the neglected integrals.
+  - It sets per-shell radii (PySCF's `_estimate_rcut` formula, or a simpler `exp(-α r²/2)` bound with the l and coefficient prefactors) and per-pair radii added in quadrature.
+  - It also sets libcint's own primitive screening through `env[PTR_EXPCUTOFF] = -ln(precision)`. `g1e.c` uses it instead of the default 60, clamped to at least `MIN_EXPCUTOFF` (20, set in `libs/CMakeLists.txt`).
+  - Molecular screening (`_SCREENING`) uses the same parameter, so molecules and cells behave alike.
+  - The default should be benchmarked: PySCF uses 1e-8, and tblite's `acc = 1` maps to `intcut = 25`, about 1e-11.
+
 ### C: a lattice-sum driver
 
 Add a lattice-sum driver next to `GTOint2c` in `libs/gto/fill_int2c.c`: a
-real, Γ-first port of `PBCnr2c_drv`.
+port of `PBCnr2c_drv`.
 
 - Inputs: `GTOint2c`'s plus the translations `Ls` (`nimg × 3`) and **weights** (`nw × nimg`), giving `nw` summed matrices of size `nao × nao`.
-  - Weights of 1 give the integral.
-  - Weights `n_T[a]` give the lattice derivative.
-  - Complex `exp(i k·T)` would give k-points later.
+  - Real weights of 1 give the Γ integral.
+  - Real weights `n_T[a]` give the Γ lattice derivative.
+  - Complex `exp(2πi κ·n)` give the k-points, and `n_T[a] exp(2πi κ·n)` their lattice derivatives.
+  - As in PySCF, buffer the images of a shell pair and contract them with the weights in one product, so the libcint calls are shared by all k-points and derivative weights.
+  - Keep a real path for Γ, since complex arithmetic doubles memory and work.
 - Duplicated ket atoms in `atm/bas/env` (PySCF's `conc_env`). `Layout` produces them.
-- Screening: a CSR list of images per shell pair, from a periodic pair search (radii in quadrature).
-- The hermitian shortcut, mirroring the lower triangle (and `_grad_positions`' `symmetric`), holds only for **even** weights. For a symmetric operator, `A(-T) = A(T)ᵀ`, so over an inversion-symmetric image set:
-  - `Σ_T A(T)` is symmetric.
-  - `Σ_T n_T A(T)` is **antisymmetric**: checked with the prototype, `|W + Wᵀ| ≈ 1e-17` against `|W| ≈ 7e-3`.
+- Screening: a CSR list of images per shell pair, from tad-mctc's periodic pair search (see below).
+- **Symmetric shortcut.** For a symmetric operator, `A(-T) = A(T)ᵀ`, so over an inversion-symmetric image set:
+  - `Σ_T e^{ik·T} A(T)` is **Hermitian**, and real symmetric at Γ.
+  - `Σ_T n_T e^{ik·T} A(T)` is **anti-Hermitian**, and real antisymmetric at Γ (checked above).
 
-  The lattice-derivative weights therefore need the full block, or an antisymmetric mirror.
+  The lower-triangle mirror (and `_grad_positions`' `symmetric` shortcut) must conjugate the mirrored triangle and, for the n-weighted derivatives, also flip its sign.
 - **No libcint optimizer, or none built for the central cell.** A `CINTOpt` caches geometry-dependent pair data (see the comment in `library.int2c`). Once the ket's coordinates are shifted inside `env`, an optimizer built beforehand is stale and gives silently wrong numbers. PySCF's `intor_cross` passes a NULL optimizer for this reason. Measure the cost of going without, or build the pair data per image.
 
   The ghost-supercell prototype cannot catch this: every image there is a real atom with its own coordinates.
@@ -141,31 +176,31 @@ Memory stays `nw × ncomp × nao²`, independent of the number of images.
 
 ### Python
 
-- `library.int2c`: optional `translations` and `weights`.
-- `Inputs`: add the lattice (differentiable). The integer shifts and the `periodic` mask belong to the structure function and its `_Block`. They are construction data, like the screened pairs, and carry no gradient.
+- `library.int2c`: optional `translations` and `weights`, real or complex.
+- `Inputs`: add the lattice (differentiable). The integer shifts, the `periodic` mask, the k-points and the precision belong to the structure function and its `_Block`. They are construction data, like the screened pairs, and carry no gradient.
 - `int1e`: drop the `NotImplementedError`, and reject `r0`/`r0r0`/`nuc` for periodic structures.
 - `_Block.pairs`: `(bra shell, ket shell)` becomes `(bra shell, ket shell, image)`, or a CSR per pair.
-- Gradients:
-  - Positions: as now, with lattice-summed derivative integrals. The bra term goes to atom `i` and the ket term (including the operator term) to atom `j`.
-  - Lattice: `dE/dh_a = Σ_T n_T[a] · (ket term of image T)`, the same derivative integrals with weights `n_T` (3 weights × 3 directions).
+- Gradients of a real loss of a complex output: the incoming gradient is complex, and the contraction takes the real part (`Re Σ conj(g) · dA`).
+  - Positions: as now, with Bloch-summed derivative integrals. The bra term goes to atom `i` and the ket term (including the operator term) to atom `j`.
+  - Lattice: `dE/dh_a = Re Σ_T n_T[a] · (ket term of image T)`, the same derivative integrals with weights `n_T e^{ik·T}` (3 weights × 3 directions × nk). Along non-periodic axes `n = 0`, so a placeholder vacuum vector gets a zero gradient by construction.
   - Exponents and coefficients: unchanged, with summed integrals.
   - Forward mode (`_tangent_*`) needs the matching lattice tangent.
-- `_PerStructure`/vmap: the lattice is one more per-structure tensor. tad-mctc already rejects batches that mix molecules and cells.
+- `_PerStructure`/vmap: the lattice is one more per-structure tensor. tad-mctc already rejects batches that mix molecules and cells. A batch shares one k-point set, or pads it per structure (to decide when implementing).
 
 The ghost-supercell prototype becomes the reference implementation in the tests.
 
-### tad-mctc
+### tad-mctc: periodic pair search
 
-`neighbor.pairs_within_radii` raises for periodic structures. A periodic
-variant returning `(i, j, shift)` is needed, built on
-`build_periodic_shifts` or `NeighborList`. It must respect the half-list
-rule: one entry stands for `(i, j, +n)` and `(j, i, -n)`, including
-self-images, and shifts along non-periodic axes must be dropped (see
-`build_periodic_shifts`' docstring).
+`neighbor.pairs_within_radii` raises for periodic structures. Extend it, or
+add a sibling, to return `(i, j, shift)` for pairs within their radii added
+in quadrature, `|R_j + n·h - R_i|² ≤ r_i² + r_j²`. Requirements:
 
-## Open decisions
+- Built on `build_periodic_shifts` or `NeighborList` (ghost pool), honouring each structure's `periodic` mask. Shifts along non-periodic axes must be dropped by the consumer, because the cutoff check alone does not remove them for short placeholder vectors (see `build_periodic_shifts`' docstring and the prototype's `images`).
+- Half list as in `NeighborList`: one entry stands for `(i, j, +n)` and `(j, i, -n)`. The self-images `i == j, n ≠ 0` appear once per `±n` pair, and the on-site `n = 0` pairs are added by the consumer, as now.
+- Batched structures and `vmap` behave as in the molecular version (construction side, no gradient).
 
-1. Γ only, or design the weights complex from the start for k-points?
-2. Does the periodic pair search live in tad-mctc (preferred, reusable by dxtb) or here?
-3. Cutoff: libcint's fixed `exp(-60)`, as molecular screening uses now, or an accuracy parameter like tblite's `acc`? And whether to keep a cap at all.
-4. Should 1D/2D `periodic` masks be supported from the start? (They only change which shifts are generated.)
+## Remaining questions
+
+1. Default `precision`: benchmark accuracy against cost on a few dxtb-relevant cells (the 1e-8 to 1e-11 range).
+2. Should k-points also be accepted in Cartesian coordinates, or only fractional?
+3. Batches: one shared k-point set, or per-structure sets padded to a common count?

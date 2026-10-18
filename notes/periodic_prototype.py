@@ -15,6 +15,7 @@ Checks
 import math
 import time
 
+import numpy as np
 import torch
 from pyscf.pbc import gto as pbcgto
 from tad_mctc.io.structure import Structure
@@ -36,8 +37,11 @@ SHELLS = [[0, [3.4, 0.3], [0.6, 0.7]], [1, [0.8, 1.0]]]
 SCREENING = 60.0  # libcint's own threshold, -log of the Gaussian product
 
 
-def pyscf_cell(lattice, positions):
+def pyscf_cell(lattice, positions, dimension=3):
     return pbcgto.M(
+        dimension=dimension,
+        # images along periodic axes only (PySCF default 2D sums all 3)
+        low_dim_ft_type="inf_vacuum" if dimension < 3 else None,
         atom=[(int(z), p.tolist()) for z, p in zip(NUMBERS, positions)],
         a=lattice.numpy(),
         unit="Bohr",
@@ -63,13 +67,33 @@ def tad_basis(cell):
     return Basis(shells=shells, spherical=False)
 
 
-def images(lattice, cutoff):
-    """Integer shifts, the zero shift first"""
-    shifts = build_periodic_shifts(
-        lattice.detach(), torch.tensor([True] * 3), cutoff
-    ).shifts
+def images(lattice, cutoff, periodic=(True, True, True)):
+    """Integer shifts along the periodic axes, the zero shift first"""
+    mask = torch.tensor(periodic)
+    shifts = build_periodic_shifts(lattice.detach(), mask, cutoff).shifts
+    # build_periodic_shifts leaves dropping non-periodic axes to the consumer
+    shifts = shifts[(shifts[:, ~mask] == 0).all(-1)]
     zero = (shifts == 0).all(-1)
     return torch.cat([shifts[zero], shifts[~zero]])
+
+
+def bloch_int1e(name, basis, positions, lattice, shifts, kfrac):
+    """
+    A(k) = sum_T exp(i k.T) <mu|op|nu(T)> for k-points in fractional
+    (reduced) coordinates, k.T = 2 pi kfrac.n: the phases are constants, only
+    the image positions depend on the lattice. Shape (nk, *comp, nao, nao).
+    """
+    nimg = len(shifts)
+    trans = shifts.to(positions.dtype) @ lattice
+    ext = Structure(
+        numbers=NUMBERS.repeat(nimg),
+        positions=(positions[None] + trans[:, None]).reshape(-1, 3),
+    )
+    full = int1e(name, basis, ext, packed=False)
+    nao = full.shape[-1] // nimg
+    blocks = full[..., :nao, :].unflatten(-1, (nimg, nao))
+    phase = torch.exp(2j * math.pi * (kfrac @ shifts.T.to(kfrac.dtype)))
+    return torch.einsum("...inj,kn->k...ij", blocks.to(phase.dtype), phase)
 
 
 def periodic_int1e(name, basis, positions, lattice, shifts, fold="ket"):
@@ -169,6 +193,38 @@ def main():
 
         fsigma = fd(torch.zeros(3, 3, **dd), strained)
         print(f"   |sigma - FD strain| {(sigma - fsigma).abs().max():.2e}")
+
+    # 5. k-points and 1D/2D periodicity vs PySCF (dimension = number of
+    # leading periodic axes there)
+    kfrac = torch.tensor([[0.0, 0.0, 0.0], [0.25, 0.0, 0.5], [0.5, -0.25, 0.125]], **dd)
+    for dim in (3, 2, 1):
+        periodic = tuple(a < dim for a in range(3))
+        k = kfrac * torch.tensor(periodic, **dd)  # no k along vacuum axes
+        # PySCF wants vacuum axes orthogonal to the periodic ones; they are
+        # short here, so their images would lie within the cutoff
+        lat_d = LATTICE.clone()
+        lat_d[dim:] = torch.diag(LATTICE).diag()[dim:]
+        cell_d = pyscf_cell(lat_d, POSITIONS, dimension=dim)
+        shifts_d = images(lat_d, cutoff, periodic)
+        out = bloch_int1e("ovlp", basis, POSITIONS, lat_d, shifts_d, k)
+        ref = torch.from_numpy(
+            np.asarray(cell_d.pbc_intor("int1e_ovlp", kpts=cell_d.get_abs_kpts(k.numpy())))
+        )
+        herm = (out - out.mT.conj()).abs().max()
+        print(f"5. {dim}D, {len(shifts_d)} images: |S(k) - S_pyscf(k)| "
+              f"{(out - ref).abs().max():.2e}, |S(k) - S(k)^H| {herm:.2e}")
+
+    # 6. lattice gradient at k-points fixed in fractional coordinates
+    w = torch.randn(len(kfrac), 3, *s.shape, dtype=torch.complex128)
+
+    def energy_k(pos, lat):
+        a = bloch_int1e("j", basis, pos, lat, shifts, kfrac)
+        return (w.conj() * a).sum().real
+
+    lat = LATTICE.clone().requires_grad_(True)
+    (glat,) = torch.autograd.grad(energy_k(POSITIONS, lat), (lat,))
+    flat = fd(LATTICE, lambda l: energy_k(POSITIONS, l))
+    print(f"6. j(k): |dE/dh - FD| {(glat - flat).abs().max():.2e}")
 
 
 if __name__ == "__main__":
