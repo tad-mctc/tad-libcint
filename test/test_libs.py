@@ -27,6 +27,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+import torch
 
 import tad_libcint
 from tad_libcint.library import (
@@ -101,3 +102,34 @@ def test_coexistence_with_pyscf(order: str) -> None:
 
     script = _TAD + _PYSCF if order == "tad-first" else _PYSCF + _TAD
     subprocess.run([sys.executable, "-c", script], check=True)
+
+
+# PyTorch runs its OpenMP runtime first, then lists the loaded OpenMP runtimes
+_OPENMP = (
+    """
+import torch
+torch.set_num_threads(2)
+torch.rand(2**22).exp().sum()
+"""
+    + _TAD
+    + """
+import ctypes, os
+dyld = ctypes.CDLL(None)
+dyld._dyld_get_image_name.restype = ctypes.c_char_p
+images = [dyld._dyld_get_image_name(i) for i in range(dyld._dyld_image_count())]
+print(*{os.path.realpath(i.decode()) for i in images if i.endswith(b"/libomp.dylib")})
+"""
+)
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="LLVM's libomp of macOS")
+def test_openmp_runtime_of_pytorch() -> None:
+    """The libraries share PyTorch's libomp, a second one would abort."""
+    result = subprocess.run(
+        [sys.executable, "-c", _OPENMP],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    (runtime,) = result.stdout.split()
+    assert Path(runtime).is_relative_to(Path(torch.__file__).parent.resolve())

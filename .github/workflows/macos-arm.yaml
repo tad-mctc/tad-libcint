@@ -49,6 +49,10 @@ jobs:
       - name: Checkout submodules
         run: git submodule update --init --recursive
 
+      # the OpenMP header and runtime for Apple's Clang (see CMakeLists.txt)
+      - name: Install libomp
+        run: brew install libomp
+
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v4
         with:
@@ -69,5 +73,16 @@ jobs:
 
       - name: Unittests with tox
         run: tox -e $TOXENV
+        env:
+          TOXENV: ${{ env.TOXENV }}
+
+      # libcgto must load PyTorch's libomp through the rpath (see CMakeLists.txt)
+      - name: Show the libraries' dependencies and rpaths
+        if: always()
+        run: |
+          libs=(.tox/${TOXENV}/lib/python*/site-packages/tad_libcint/*.so)
+          otool -L "${libs[@]}"
+          otool -l "${libs[@]}" | grep -A2 LC_RPATH
+          otool -L .tox/${TOXENV}/lib/python*/site-packages/tad_libcint/libcgto_tad.so | grep "@rpath/libomp.dylib"
         env:
           TOXENV: ${{ env.TOXENV }}
