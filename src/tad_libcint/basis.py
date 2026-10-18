@@ -456,7 +456,8 @@ class Layout:
     def shell_pairs(self, atom_pairs: np.ndarray) -> np.ndarray:
         """
         Pairs of a shell of the first and a shell of the second atom of each
-        atom pair, shape ``(npairs, 2)``
+        atom pair, shape ``(npairs, 2)`` (and further columns of
+        `atom_pairs`, repeated)
         """
         nshell = np.bincount(self.shell_atom, minlength=self.nat)
         return _member_pairs(atom_pairs, nshell)
@@ -464,7 +465,8 @@ class Layout:
     def uncontracted_pairs(self, shell_pairs: np.ndarray) -> np.ndarray:
         """
         Pairs of shells of :attr:`Basis.uncontracted` (one per primitive) that
-        make up the given shell pairs, shape ``(npairs, 2)``
+        make up the given shell pairs, shape ``(npairs, 2)`` (and further
+        columns of `shell_pairs`, repeated)
         """
         return _member_pairs(shell_pairs, self.shell_nprim)
 
@@ -573,7 +575,8 @@ def _to_numpy(x: Tensor) -> np.ndarray:
 def _member_pairs(pairs: np.ndarray, size: np.ndarray) -> np.ndarray:
     """
     All pairs of members of the groups in each pair of groups, where the
-    groups consist of consecutive members (`size` of each group)
+    groups consist of consecutive members (`size` of each group). Further
+    columns of `pairs` are repeated for each member pair.
     """
     first = np.cumsum(size) - size
     bra, ket = pairs[:, 0], pairs[:, 1]
@@ -586,7 +589,8 @@ def _member_pairs(pairs: np.ndarray, size: np.ndarray) -> np.ndarray:
     )
 
     nket = size[ket][group]
-    return np.stack(
+    members = np.stack(
         [first[bra][group] + index // nket, first[ket][group] + index % nket],
         axis=-1,
     )
+    return np.concatenate([members, pairs[group, 2:]], axis=-1)
