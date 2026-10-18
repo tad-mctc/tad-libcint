@@ -21,6 +21,7 @@
 Setup for C Extension.
 """
 
+import importlib.util
 import os
 import shlex
 import sys
@@ -53,12 +54,29 @@ if (
     CMAKE_ARGS.append("-GMinGW Makefiles")
 
 
+def editable_openmp_args() -> list[str]:
+    """
+    On macOS, libcgto loads PyTorch's libomp from next to the installed
+    package (see libs/CMakeLists.txt), where an editable install has none.
+    It takes the one of the building Python instead, which is only visible
+    without build isolation, and otherwise builds without OpenMP.
+    """
+    if sys.platform != "darwin":
+        return []
+    spec = importlib.util.find_spec("torch")
+    if spec is None or not spec.submodule_search_locations:
+        return ["-DENABLE_OPENMP=OFF"]
+    torch_dir = Path(spec.submodule_search_locations[0])
+    return [f"-DTORCH_LIBRARY_DIR={torch_dir / 'lib'}"]
+
+
 class CMakeBuildExt(build_ext):
     """Build the shared libraries in `LIB_DIR` with CMake"""
 
     def build_extension(self, ext: Extension) -> None:
         extdir = Path(self.get_ext_fullpath(ext.name)).resolve().parent
         build_dir = Path(self.build_temp)
+        editable = self.inplace or getattr(self, "editable_mode", False)
         self.spawn(
             [
                 "cmake",
@@ -67,6 +85,7 @@ class CMakeBuildExt(build_ext):
                 f"-DCMAKE_LIBRARY_OUTPUT_DIRECTORY={extdir}",
                 # DLLs are runtime artifacts
                 f"-DCMAKE_RUNTIME_OUTPUT_DIRECTORY={extdir}",
+                *(editable_openmp_args() if editable else []),
                 *CMAKE_ARGS,
             ]
         )
