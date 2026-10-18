@@ -58,6 +58,7 @@ __all__ = [
     "PTR_ENV_START",
     "has_symbol",
     "int2c",
+    "int2c_lattice",
 ]
 
 
@@ -217,3 +218,123 @@ def int2c(
         CINT.CINTdel_optimizer(ctypes.byref(opt))
 
     return out.swapaxes(-1, -2).reshape(*out_shape, nao_bra, nao_ket)
+
+
+def int2c_lattice(
+    symbol: str,
+    comp_shape: tuple[int, ...],
+    *,
+    shls_slice: tuple[int, int, int, int],
+    pairs: np.ndarray,
+    translations: np.ndarray,
+    weights: np.ndarray,
+    components: Sequence[int] | None = None,
+    atm: np.ndarray,
+    bas: np.ndarray,
+    env: np.ndarray,
+    ao_loc: np.ndarray,
+) -> np.ndarray:
+    """
+    Evaluate weighted lattice sums of a block of a two-centre integral.
+
+    For each weight row ``w``, the sum over the shell pairs and images
+    ``(ish, jsh, L)`` of ``weights[w, L] * (ish | op | jsh + T_L)``, with
+    the ket shell moved by the translation ``T_L``. The ket shells must
+    belong to atoms of their own, not to atoms of a bra shell.
+
+    Parameters
+    ----------
+    symbol : str
+        Name of the libcint function, e.g. ``"int1e_ovlp_sph"``.
+    comp_shape : tuple[int, ...]
+        Shape of the integral's components, e.g. ``(3,)`` for a dipole.
+    shls_slice : tuple[int, int, int, int]
+        First and last (exclusive) shell of the bra and of the ket.
+    pairs : np.ndarray
+        Bra shell, ket shell and image of each term, shape ``(nterms, 3)``,
+        sorted by bra shell, then ket shell. The elements of all other
+        shell pairs are zero.
+    translations : np.ndarray
+        Translation of each image in Bohr, shape ``(nimg, 3)``.
+    weights : np.ndarray
+        Weight of each image in each sum, shape ``(nw, nimg)``.
+    components : Sequence[int] | None, optional
+        Flat indices of the components to keep, in this order. Defaults to
+        all components.
+    atm : np.ndarray
+        Atom slots, shape ``(nat, ATM_SLOTS)``, ``int32``.
+    bas : np.ndarray
+        Shell slots, shape ``(nsh, BAS_SLOTS)``, ``int32``.
+    env : np.ndarray
+        Floating point environment, ``float64``.
+    ao_loc : np.ndarray
+        Offset of each shell's first AO, shape ``(nsh + 1,)``, ``int32``.
+
+    Returns
+    -------
+    np.ndarray
+        Sums of shape ``(nw, *comp_shape, nao_bra, nao_ket)``, or
+        ``(nw, len(components), nao_bra, nao_ket)``.
+    """
+    atm = np.ascontiguousarray(atm, dtype=np.int32)
+    bas = np.ascontiguousarray(bas, dtype=np.int32)
+    env = np.ascontiguousarray(env, dtype=np.float64)
+    ao_loc = np.ascontiguousarray(ao_loc, dtype=np.int32)
+    translations = np.ascontiguousarray(translations, dtype=np.float64)
+    weights = np.ascontiguousarray(weights, dtype=np.float64)
+
+    nat, nsh = len(atm), len(bas)
+    nw, nimg = weights.shape
+    if translations.shape != (nimg, 3):
+        raise ValueError(
+            f"Expected translations of shape ({nimg}, 3), got "
+            f"{translations.shape}."
+        )
+    ish0, ish1, jsh0, jsh1 = shls_slice
+    nao_bra = int(ao_loc[ish1] - ao_loc[ish0])
+    nao_ket = int(ao_loc[jsh1] - ao_loc[jsh0])
+    ncomp = int(np.prod(comp_shape))
+    if components is None:
+        comp_map, out_shape = None, comp_shape
+    else:
+        comp_map = np.asarray(components, dtype=np.int32)
+        out_shape = (len(comp_map),)
+        if ((comp_map < 0) | (comp_map >= ncomp)).any():
+            raise ValueError(f"Components {components} out of {ncomp}.")
+
+    # the images of each shell pair: consecutive terms of the same pair
+    pairs = np.ascontiguousarray(pairs, dtype=np.int32)
+    first = np.ones(len(pairs), dtype=bool)
+    first[1:] = (pairs[1:, :2] != pairs[:-1, :2]).any(-1)
+    pair_loc = np.append(np.flatnonzero(first), len(pairs)).astype(np.int32)
+    shell_pairs = np.ascontiguousarray(pairs[first, :2])
+    images = np.ascontiguousarray(pairs[:, 2])
+    if len(images) > 0 and (images.min() < 0 or images.max() >= nimg):
+        raise ValueError(f"Image indices out of {nimg} images.")
+
+    # libcint fills each component in column-major order
+    out = np.zeros((nw, math.prod(out_shape), nao_ket, nao_bra))
+    CGTO.GTOint2c_lattice(
+        getattr(CINT, symbol),
+        _ptr(out),
+        ncomp,
+        None if comp_map is None else _ptr(comp_map),
+        0 if comp_map is None else len(comp_map),
+        (ctypes.c_int * 4)(*shls_slice),
+        _ptr(shell_pairs),
+        len(shell_pairs),
+        _ptr(pair_loc),
+        _ptr(images),
+        _ptr(translations),
+        _ptr(weights),
+        nimg,
+        nw,
+        _ptr(ao_loc),
+        _ptr(atm),
+        nat,
+        _ptr(bas),
+        nsh,
+        _ptr(env),
+        len(env),
+    )
+    return out.swapaxes(-1, -2).reshape(nw, *out_shape, nao_bra, nao_ket)

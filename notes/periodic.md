@@ -1,6 +1,9 @@
 # Periodic integrals: investigation
 
-Status: investigation (branch `feature/periodic`), no library changes yet.
+Status: implemented on branch `feature/periodic` (tad-libcint) and
+`feature/periodic-integrals` (tad-mctc). The sections below are the
+investigation; [Implementation](#implementation) records what was built and
+where it differs.
 Prototype: [`periodic_prototype.py`](periodic_prototype.py). It needs tad-mctc ≥ 0.10
 (`neighbor.images`), PySCF with `pbc`, and the in-tree build on the path, e.g.
 
@@ -347,3 +350,33 @@ when no padding is needed.
 - Later, possibly a mesh from a k-point density, like VASP's `KSPACING`.
 - Under the semantics above, the helper's output needs no gradient.
 - Deferred: time-reversal reduction (`A(-k) = A(k)*` for a real basis, halving the k-points with doubled weights) and space-group reduction (spglib). Both change only the points and weights in the Node, not the integrals.
+
+## Implementation
+
+**tad-mctc** (`feature/periodic-integrals`):
+
+- `tad_mctc.kpoints`: `KPoints` (points, weights, mask), `pack_kpoints`, `reciprocal_lattice`, `to_fractional`/`to_cartesian`, and `make_kpoints` (PySCF's `make_kpts` keywords and order).
+- `tad_mctc.neighbor.periodic_pairs_within_radii`, which returns `(i, j, shift)` as a half list.
+
+**tad-libcint** (`feature/periodic`):
+
+- **C driver.** `GTOint2c_lattice` in `libs/gto/fill_int2c.c` computes weighted sums over the ket images of each shell pair.
+  - It uses a copy of `env` per thread and no optimizer.
+  - It works on real weight rows: 1 at Γ, and cos/sin per k-point (zero for padding).
+- **Atom copies.** The structure function duplicates the atoms for the kets (`_with_ket_copies`, a `torch.cat`), so a lattice sum is a rectangular block of the existing machinery.
+  - The block carries the image table and the weights (`_Images`).
+  - The integral gets a leading axis of sums, which `int1e` turns into the real Γ matrix or the complex k-point matrices.
+- **Transposed source integrals** (e.g. `ovlpip` from `ipovlp`) negate the images.
+- **Lattice gradient and tangent.** They are the ket term of the position gradient and tangent, with the image weights times `n_a`.
+- **Screening.** It uses the benchmarked per-element-pair bound with the operator's rank (one per moment factor and per derivative) and the margin of 10. The neighbour search is tad-mctc's.
+
+Differences from the plan above:
+
+- **`PTR_EXPCUTOFF` is not set.** libcint keeps its own primitive screening (60), which the benchmark assumed.
+- **Molecular integrals are unchanged.** `precision` only applies to periodic structures. Molecular screening still drops only what libcint would neglect.
+- **No hermitian or antisymmetric mirror for lattice sums.** The atom copies make bra and ket shells different, so every block is computed in full.
+- **`torch.compile`.** Molecules and cells behave alike, and as before:
+  - Compiling with graph breaks gives values and `.backward()` equal to eager mode.
+  - `fullgraph=True` and compiled `torch.func` transforms fail (strict xfails in `test/test_compile.py`).
+  - A fullgraph version needs the precomputed construction data and a `torch.library.custom_op` hot path. That would be a library-wide change.
+- **Version pin.** tad-libcint needs the new tad-mctc APIs. The `tad-mctc>=0.10.0` pin must be raised once they are released.

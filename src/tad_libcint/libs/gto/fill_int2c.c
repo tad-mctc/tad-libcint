@@ -190,6 +190,100 @@ void GTOint2c_pairs(int (*intor)(), double *mat, int comp, int *comp_map,
         fill_lower_triangle(mat, &comps, hermi, naoi);
 }
 
+/*
+ * Weighted lattice sums of shell pairs (added for tad-libcint):
+ *
+ *   mat[w] = sum_t weights[w*nimg+img[t]] (ish | intor | jsh + Ls[img[t]])
+ *
+ * for the shell pairs p = (pairs[2*p], pairs[2*p+1]) in absolute shell
+ * indices, each with the images img[pair_loc[p]], ..., img[pair_loc[p+1]-1]
+ * (indices into Ls, nimg x 3). The ket shell's atom is moved by the
+ * translation in a copy of env per thread; it must not be the atom of a bra
+ * shell (the caller duplicates the atoms for the kets). A ket-centred
+ * operator moves along with it. The pairs must be distinct, so that no two
+ * threads add to the same elements.
+ *
+ * mat(naoi,naoj,nout,nw) in F-order, zero-initialized. No optimizer: its
+ * precomputed pair data would not follow the shifted coordinates.
+ */
+void GTOint2c_lattice(int (*intor)(), double *mat, int comp, int *comp_map,
+                      int nout, int *shls_slice, int *pairs, int npairs,
+                      int *pair_loc, int *img, double *Ls, double *weights,
+                      int nimg, int nw, int *ao_loc, int *atm, int natm,
+                      int *bas, int nbas, double *env, int nenv)
+{
+        const int ish0 = shls_slice[0];
+        const int jsh0 = shls_slice[2];
+        const size_t naoi = ao_loc[shls_slice[1]] - ao_loc[ish0];
+        const size_t naoj = ao_loc[shls_slice[3]] - ao_loc[jsh0];
+        const int nkeep = comp_map == NULL ? comp : nout;
+        const size_t nmat = naoi * naoj * nkeep;
+        const int cache_size = GTOmax_cache_size(intor, shls_slice, 2,
+                                                 atm, natm, bas, nbas, env);
+        const size_t buf_size = (size_t)comp
+             * max_shell_size(ao_loc, shls_slice[0], shls_slice[1])
+             * max_shell_size(ao_loc, shls_slice[2], shls_slice[3]);
+#pragma omp parallel
+{
+        int p, t, w, ic, i, j, k, ish, jsh, di, dj, ptr;
+        size_t i0, j0;
+        double wt;
+        double *src, *dst, *rj, *rj_loc;
+        int shls[2];
+        double *env_loc = malloc(sizeof(double) * nenv);
+        double *cache = malloc(sizeof(double) * cache_size);
+        double *buf = malloc(sizeof(double) * buf_size);
+        NPdcopy(env_loc, env, nenv);
+#pragma omp for schedule(dynamic, 4)
+        for (p = 0; p < npairs; p++) {
+                ish = pairs[2*p];
+                jsh = pairs[2*p+1];
+                shls[0] = ish;
+                shls[1] = jsh;
+                di = ao_loc[ish+1] - ao_loc[ish];
+                dj = ao_loc[jsh+1] - ao_loc[jsh];
+                i0 = ao_loc[ish] - ao_loc[ish0];
+                j0 = ao_loc[jsh] - ao_loc[jsh0];
+                ptr = atm(PTR_COORD, bas(ATOM_OF, jsh));
+                rj = env + ptr;
+                rj_loc = env_loc + ptr;
+
+                for (t = pair_loc[p]; t < pair_loc[p+1]; t++) {
+                        for (k = 0; k < 3; k++) {
+                                rj_loc[k] = rj[k] + Ls[3*img[t]+k];
+                        }
+                        // buf(di,dj,comp) in F-order, zero if 0 is returned
+                        if (!(*intor)(buf, NULL, shls, atm, natm, bas, nbas,
+                                      env_loc, NULL, cache)) {
+                                continue;
+                        }
+                        for (w = 0; w < nw; w++) {
+                                wt = weights[(size_t)w*nimg+img[t]];
+                                if (wt == 0) {
+                                        continue;
+                                }
+                                for (ic = 0; ic < nkeep; ic++) {
+                                        src = buf + (size_t)di * dj
+                                            * (comp_map == NULL ? ic : comp_map[ic]);
+                                        dst = mat + w * nmat + ic * naoi * naoj
+                                            + j0 * naoi + i0;
+                                        for (j = 0; j < dj; j++) {
+                                        for (i = 0; i < di; i++) {
+                                                dst[j*naoi+i] += wt * src[j*di+i];
+                                        } }
+                                }
+                        }
+                }
+                for (k = 0; k < 3; k++) {
+                        rj_loc[k] = rj[k];
+                }
+        }
+        free(buf);
+        free(cache);
+        free(env_loc);
+}
+}
+
 void GTOint2c_spinor(int (*intor)(), double complex *mat, int comp, int hermi,
                      int *shls_slice, int *ao_loc, CINTOpt *opt,
                      int *atm, int natm, int *bas, int nbas, double *env)

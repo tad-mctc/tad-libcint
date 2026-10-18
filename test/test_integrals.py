@@ -372,17 +372,6 @@ def test_invalid_inputs(basis: Basis) -> None:
         overlap(basis, stack([batch, batch]))
 
 
-@pytest.mark.parametrize("periodic", [True, False])
-def test_periodic_unsupported(periodic: bool, basis: Basis) -> None:
-    """Structures with a lattice are refused, even without periodic axes."""
-    cell = WATER.replace(
-        lattice=10 * torch.eye(3, dtype=DTYPE),
-        periodic=torch.full((3,), periodic),
-    )
-    with pytest.raises(NotImplementedError, match="periodic"):
-        overlap(basis, cell)
-
-
 def test_missing_integral(basis: Basis) -> None:
     """Integrals that libcint lacks raise a clear error."""
     with pytest.raises(NotImplementedError, match="not available"):

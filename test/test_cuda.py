@@ -24,12 +24,14 @@ from __future__ import annotations
 import pytest
 import torch
 from tad_mctc.io.structure import Structure, pack_structures
+from tad_mctc.kpoints import to_cartesian
 from torch import Tensor
 from torch.func import jacrev
 
 from tad_libcint import Basis, int1e, integrals
 
 from .data import DIMER, METHANE, WATER, element_shells
+from .test_periodic import KFRAC, WATER_CELL
 
 pytestmark = pytest.mark.skipif(
     not torch.cuda.is_available(), reason="CUDA is not available"
@@ -119,3 +121,24 @@ def test_jacobian() -> None:
     out = jacobian(CUDA)
     assert out.device.type == "cuda"
     assert torch.allclose(out.cpu(), jacobian(torch.device("cpu")))
+
+
+@pytest.mark.parametrize("kpoints", [False, True], ids=["gamma", "k"])
+def test_periodic(kpoints: bool) -> None:
+    """Lattice sums and their lattice gradient on CUDA match the CPU."""
+
+    def lattice_sums(device: torch.device) -> list[Tensor]:
+        cell = WATER_CELL.to(device=device)
+        assert cell.lattice is not None
+        lattice = cell.lattice.clone().requires_grad_(True)
+        kcart = to_cartesian(KFRAC.to(device), lattice) if kpoints else None
+        out = int1e(
+            "jj", _basis(device), cell.replace(lattice=lattice), kpoints=kcart
+        )
+        (grad,) = torch.autograd.grad(out.abs().pow(2).sum(), lattice)
+        return [out, grad]
+
+    expected = lattice_sums(torch.device("cpu"))
+    for out, ref in zip(lattice_sums(CUDA), expected):
+        assert out.device.type == "cuda"
+        assert torch.allclose(out.cpu(), ref)
