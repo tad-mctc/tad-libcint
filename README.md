@@ -5,7 +5,7 @@
     <td>Compatibility:</td>
     <td>
       <img src="https://img.shields.io/badge/Python-3.10%20|%203.11%20|%203.12%20|%203.13%20|%203.14-blue.svg" alt="Python Versions"/>
-      <img src="https://img.shields.io/badge/PyTorch-%3E=2.6.0-blue.svg" alt="PyTorch Versions"/>
+      <img src="https://img.shields.io/badge/PyTorch-%3E=2.7.0-blue.svg" alt="PyTorch Versions"/>
       <img src="https://img.shields.io/badge/OS-Linux%20|%20macOS%20|%20Windows-blue.svg" alt="Operating Systems">
     </td>
   </tr>
@@ -189,7 +189,7 @@ git submodule update --remote
 ```
 
 The build requires CMake (≥ 3.18) and a C compiler (with OpenMP for parallel integral evaluation).
-On macOS, Apple's Clang (Xcode Command Line Tools) builds with OpenMP if Homebrew's libomp is installed (`brew install libomp`). The libraries then use PyTorch's OpenMP runtime (hence PyTorch ≥ 2.7 on macOS), since a second one in the same process aborts. Editable installs find it only with PyTorch in the build environment (`pip install --no-build-isolation -e .`) and otherwise build without OpenMP.
+On macOS, Apple's Clang (Xcode Command Line Tools) builds with OpenMP if Homebrew's libomp is installed (`brew install libomp`). The libraries then use PyTorch's OpenMP runtime, since a second one in the same process aborts. Editable installs find it only with PyTorch in the build environment (`pip install --no-build-isolation -e .`) and otherwise build without OpenMP.
 On Windows, *libcint* needs the GCC of [MinGW-w64](https://www.msys2.org/), since MSVC lacks C99 complex numbers, e.g., the MSYS2 packages `mingw-w64-ucrt-x86_64-gcc`, `mingw-w64-ucrt-x86_64-libgomp` (OpenMP) and `mingw-w64-ucrt-x86_64-make` on the `PATH`.
 Its runtime (including OpenMP) is linked statically, so the libraries only depend on system DLLs.
 Extra CMake options are passed through the `CMAKE_ARGS` environment variable, e.g., `CMAKE_ARGS="-DBUILD_MARCH_NATIVE=ON" pip install .`.
@@ -240,7 +240,6 @@ pip install .
 
 | PyTorch \ Python | 3.10               | 3.11               | 3.12               | 3.13               | 3.14               |
 | ---------------- | ------------------ | ------------------ | ------------------ | ------------------ | ------------------ |
-| 2.6.0            | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :white_check_mark: | :x:                |
 | 2.7.1            | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :white_check_mark: | :x:                |
 | 2.8.0            | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :white_check_mark: | :x:                |
 | 2.9.1            | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :white_check_mark: |
