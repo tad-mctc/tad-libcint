@@ -116,6 +116,8 @@ libcint's own `exp(-60)` threshold.
 | overlap at 3 k-points vs PySCF, 3D / 2D / 1D (343 / 49 / 7 images) | 2e-16 each |
 | overlap Hermitian at every k | 1e-17 |
 | `"j"` at k-points: dE/dh vs finite differences (k fixed in fractional coordinates) | 3e-11 |
+| `"j"` at Cartesian k held fixed (phases depend on h): dE/dh vs finite differences | 5e-11 |
+| `"j"` at k = 2π κ h⁻ᵀ built from the lattice: dE/dh vs fixed fractional k | 3e-17 |
 | n-weighted Γ overlap `Σ_T n_T S(T)` antisymmetric | 1e-17 (\|W\| ≈ 7e-3) |
 
 The approach is correct, and the lattice gradient comes for free. With image
@@ -138,13 +140,13 @@ images (tad-mctc `build_periodic_shifts`):
 ### API
 
 ```python
-int1e(name, basis, structure, *, kpoints=None, precision=1e-?, ...)
+int1e(name, basis, structure, *, kpoints=None, precision=1e-10, ...)
 ```
 
 - **Lattice and mask.** `structure.lattice` and `structure.periodic` come from tad-mctc's `Structure`, which already fills in the mask.
 - **`kpoints`.** As in PySCF: **Cartesian**, in 1/bohr, shape `([batch,] nk, 3)`, with the phase `exp(i k·T)`. `None` means Γ: a real result of shape `([batch,] *comp, nao, nao)`. Otherwise the result is complex, `([batch,] nk, *comp, nao, nao)`.
   - **Phases are formed in torch** from `kpoints` and `T = n·h`, so they are differentiable in both. Holding Cartesian k fixed, a strain changes the phase too: `∂/∂h_ab e^{ik·T} = i n_a k_b e^{ik·T}`.
-  - **The derivatives cost nothing extra.** That phase term needs only the n-weighted Bloch sums `Σ_T n_a e^{ik·T} A(T)`, which the lattice derivative computes anyway. The same sums give `∂A/∂k = i Σ_T T e^{ik·T} A(T)`, which is PySCF's `kderiv=1`.
+  - **The phase term is cheap.** It needs the n-weighted Bloch sums of the integral *values*, `Σ_T n_a e^{ik·T} A(T)`: the same libcint calls with three more weight rows, no derivative integrals. The same sums give `∂A/∂k = i Σ_T T e^{ik·T} A(T)`, which is PySCF's `kderiv=1`. The prototype checks this term: with Cartesian k fixed, the lattice gradient differs from the one at fixed fractional k by 5e-3, and both match finite differences.
   - **Monkhorst–Pack grids:** a user builds them from the lattice, `k = 2π κ h⁻ᵀ` (e.g. with a helper). Autograd then sees fractional k held fixed under strain, the physically meaningful stress (verified in the prototype with fractional k).
   - **Validation:** k-point components along non-periodic axes must be zero.
   - **Batches:** each structure has its own k-point set. Different numbers of k-points are zero-padded in the output, as AOs are padded now. The input is either a list of `(nk_b, 3)` tensors or a padded tensor with a mask (to decide when implementing).
@@ -160,7 +162,7 @@ port of `PBCnr2c_drv`.
 - Inputs: `GTOint2c`'s plus the translations `Ls` (`nimg × 3`) and **weights** (`nw × nimg`), giving `nw` summed matrices of size `nao × nao`.
   - Real weights of 1 give the Γ integral.
   - Real weights `n_T[a]` give the Γ lattice derivative.
-  - Complex `exp(2πi κ·n)` give the k-points, and `n_T[a] exp(2πi κ·n)` their lattice derivatives.
+  - Complex `exp(i k·T)` give the k-points, and `n_T[a] exp(i k·T)` both their ket-derivative lattice terms (on derivative integrals) and the phase terms (on values).
   - As in PySCF, buffer the images of a shell pair and contract them with the weights in one product, so the libcint calls are shared by all k-points and derivative weights.
   - Keep a real path for Γ, since complex arithmetic doubles memory and work.
 - Duplicated ket atoms in `atm/bas/env` (PySCF's `conc_env`). `Layout` produces them.
@@ -179,12 +181,17 @@ Memory stays `nw × ncomp × nao²`, independent of the number of images.
 ### Python
 
 - `library.int2c`: optional `translations` and `weights`, real or complex.
-- `Inputs`: add the lattice (differentiable). The integer shifts, the `periodic` mask, the k-points and the precision belong to the structure function and its `_Block`. They are construction data, like the screened pairs, and carry no gradient.
+- `Inputs`: add the lattice and the k-points, both differentiable. The integer shifts, the `periodic` mask and the precision belong to the structure function and its `_Block`. They are construction data, like the screened pairs, and carry no gradient.
 - `int1e`: drop the `NotImplementedError`, and reject `r0`/`r0r0`/`nuc` for periodic structures.
 - `_Block.pairs`: `(bra shell, ket shell)` becomes `(bra shell, ket shell, image)`, or a CSR per pair.
 - Gradients of a real loss of a complex output: the incoming gradient is complex, and the contraction takes the real part (`Re Σ conj(g) · dA`).
   - Positions: as now, with Bloch-summed derivative integrals. The bra term goes to atom `i` and the ket term (including the operator term) to atom `j`.
-  - Lattice: `dE/dh_a = Re Σ_T n_T[a] · (ket term of image T)`, the same derivative integrals with weights `n_T e^{ik·T}` (3 weights × 3 directions × nk). Along non-periodic axes `n = 0`, so a placeholder vacuum vector gets a zero gradient by construction.
+  - Lattice, two terms:
+    - **Ket term:** `Re Σ_T n_T[a] e^{ik·T} · (ket term of image T)`, the same derivative integrals with weights `n_T e^{ik·T}` (3 weights × 3 directions × nk).
+    - **Phase term,** for Cartesian k held fixed: `Re Σ_T i n_T[a] k_b e^{ik·T} A(T)`, the n-weighted sums of the values contracted with the incoming gradient.
+
+    Along non-periodic axes `n = 0`, so a placeholder vacuum vector gets a zero gradient by construction.
+  - k-points: `Re Σ_T i T_b e^{ik·T} A(T)`, from the same n-weighted value sums.
   - Exponents and coefficients: unchanged, with summed integrals.
   - Forward mode (`_tangent_*`) needs the matching lattice tangent.
 - `_PerStructure`/vmap: the lattice is one more per-structure tensor. tad-mctc already rejects batches that mix molecules and cells. A batch shares one k-point set, or pads it per structure (to decide when implementing).
@@ -204,9 +211,13 @@ in quadrature, `|R_j + n·h - R_i|² ≤ r_i² + r_j²`. Requirements:
 ## Precision benchmark
 
 [`periodic_precision.py`](periodic_precision.py) uses the GFN2-xTB basis,
-STO-NG expanded from dxtb's `gfn2-xtb.toml` and `sto-ng` tables. The cells
-are diamond, silicon and LiF (3D), graphene (2D, 20 bohr vacuum vector) and
-polyethylene (1D).
+STO-NG expanded from dxtb's `gfn2-xtb.toml` and `sto-ng` tables (`DXTB_SRC`
+points to dxtb's `src`).
+
+Cells:
+
+- **In sample:** diamond, silicon and LiF (3D), graphene (2D, 20 bohr vacuum vector) and polyethylene (1D).
+- **Out of sample**, added after the margin below was chosen: NaCl, MgO, and water at the density of ice (3D).
 
 Method:
 
@@ -230,43 +241,51 @@ The primitive-pair bound for an operator of rank n about the ket is
 
 with libcint's angular factors `f` and the product width `w = 1/sqrt(2(a+b))`.
 
-Results over all five cells, as the worst error/p over the cells (≤ 1 is safe):
+Results over all eight cells. The error columns give the worst error/p
+over the cells (≤ 1 is safe), first for the five in-sample cells, then for
+the three out-of-sample ones.
 
-| p | Estimator | Kept | Worst err/p, all three integrals | Worst err/p, overlap |
-| --- | --- | --- | --- | --- |
-| 1e-8 | gauss | 17–56% | 7e4 | 2e2 |
-| 1e-8 | tblite | 18–61% | 3e5 | 1e3 |
-| 1e-8 | pyscf | 31–61% | 6e2 | 1.7 |
-| 1e-8 | bound0 | 27–60% | 18 | 0.13 |
-| 1e-8 | **bound2** | 34–61% | **0.08** | 0.003 |
-| 1e-10 | gauss | 23–61% | 1e5 | 6e2 |
-| 1e-10 | tblite | 23–61% | 3e7 | 1e5 |
-| 1e-10 | pyscf | 42–71% | 6e2 | 1.3 |
-| 1e-10 | bound0 | 34–61% | 18 | 0.16 |
-| 1e-10 | **bound2** | 45–71% | **0.04** | 0.001 |
-| 1e-12 | gauss | 31–70% | 1e5 | 4e2 |
-| 1e-12 | tblite | 25–71% | 3e9 | 1e7 |
-| 1e-12 | pyscf | 50–80% | 8e2 | 1.5 |
-| 1e-12 | bound0 | 45–71% | 17 | 0.07 |
-| 1e-12 | **bound2** | 56–75% | **0.1** | 0.002 |
+| p | Estimator | Kept | Worst err/p, all three integrals (in / out) | Worst err/p, overlap | Worst absolute error |
+| --- | --- | --- | --- | --- | --- |
+| 1e-8 | gauss | 17–56% | 7e4 / 4e4 | 2e2 | 7e-4 |
+| 1e-8 | tblite | 14–61% | 3e5 / 2e7 | 5e4 | 0.16 |
+| 1e-8 | pyscf | 30–61% | 6e2 / 8e2 | 2 | 8e-6 |
+| 1e-8 | bound0 | 22–60% | 20 / 30 | 0.1 | 3e-7 |
+| 1e-8 | **bound2** | 29–61% | **0.08 / 0.04** | 0.003 | 8e-10 |
+| 1e-10 | gauss | 23–61% | 1e5 / 8e4 | 6e2 | 1e-5 |
+| 1e-10 | tblite | 14–61% | 3e7 / 2e9 | 5e6 | 0.16 |
+| 1e-10 | pyscf | 40–71% | 6e2 / 9e2 | 1 | 9e-8 |
+| 1e-10 | bound0 | 29–61% | 20 / 50 | 0.2 | 6e-9 |
+| 1e-10 | **bound2** | 36–71% | **0.04 / 0.08** | 0.003 | 8e-12 |
+| 1e-12 | gauss | 31–70% | 1e5 / 1e5 | 4e2 | 1e-7 |
+| 1e-12 | tblite | 14–71% | 3e9 / 2e11 | 5e8 | 0.16 |
+| 1e-12 | pyscf | 50–80% | 8e2 / 9e2 | 2 | 9e-10 |
+| 1e-12 | bound0 | 36–71% | 20 / 20 | 0.3 | 3e-11 |
+| 1e-12 | **bound2** | 47–75% | **0.1 / 0.03** | 0.002 | 1e-13 |
 
 Findings:
 
 - **The Gaussian product factor alone is not a precision.** It ignores the coefficients, the polynomial prefactors, the moment operators (which grow with R) and the sum over images. Its errors exceed p by up to 1e5×.
-- **tblite's 40 bohr cap is a real accuracy limit.** In LiF the error stays at 1e-5 (overlap) and 3e-3 (quadrupole), whatever the accuracy. tblite's rule is otherwise the Gaussian product rule with a global exponent.
-- **PySCF's estimate is safe for the overlap** (within 1.7×), but **not for the moments.** It is built for overlap and kinetic integrals, and fails for `j`/`jj` in LiF by up to 800×.
-- **The per-pair bound with the operator's rank is safe everywhere**, usually by orders of magnitude, at the cost of PySCF's estimate or less (LiF at 1e-10: 51% kept against PySCF's 57%, which fails). `bound0` suffices for the overlap alone.
+- **tblite's 40 bohr cap is a real accuracy limit for diffuse s and p shells.** The error stays fixed whatever the accuracy:
+  - LiF (Li α_min = 0.020): 1e-5 in the overlap and 3e-3 in the quadrupole.
+  - NaCl (Na 3p α_min = 0.014): 5e-4 in the overlap and **0.16** in the quadrupole.
+
+  These are errors in integral matrix elements; their effect on tblite's energies was not measured. tblite's rule is otherwise the Gaussian product rule with a global exponent.
+- **PySCF's estimate is safe for the overlap** (within 2×), but **not for the moments.** It is built for overlap and kinetic integrals, and fails for `j`/`jj` in the ionic cells (LiF, NaCl, MgO) by up to 900×.
+- **The per-pair bound with the operator's rank is safe in all eight cells**, usually by orders of magnitude, at the cost of PySCF's estimate or less (LiF at 1e-10: 51% kept against PySCF's 57%, which fails).
+  - Its margin of 10 was chosen on the five in-sample cells, after the bound without it overshot by up to 1.5× in graphene and polyethylene (the error jumps in steps as discrete images cross the cutoff). The three out-of-sample cells stay below 0.08 p.
+  - `bound0` suffices for the overlap alone.
 
 Recommendation:
 
 - **Estimator:** use `bound⟨n⟩` with n the highest operator rank requested in one call. dxtb computes `ovlp`, `j` and `jj` together, so n = 2.
-- **Default:** `precision = 1e-10`. With the margin of the bound, the actual errors stay below 4e-12 in all five cells, which is conservative in effect. It is tighter than PySCF's 1e-8 and comparable to tblite's `acc = 1` (`intcut = 25`, about 1e-11). `1e-12` costs 10–25% more blocks.
+- **Default:** `precision = 1e-10`. With the margin of the bound, the actual errors stay below 1e-11 in all eight cells, which is conservative in effect. It is tighter than PySCF's 1e-8 and comparable to tblite's `acc = 1` (`intcut = 25`, about 1e-11). `1e-12` costs 10–25% more blocks.
 
 Not covered yet:
 
 - Errors of energies and gradients, rather than of integral matrices.
 - The derivative integrals' own truncation error.
-- More diffuse bases (GFN1's second hydrogen s shell, the q-vSZP basis of g-xTB).
+- Other bases (GFN1's second hydrogen s shell, the q-vSZP basis of g-xTB).
 
 The gradients are exact for the truncated sum, because value and derivatives use the same pair list. Revisit the default once dxtb runs periodic SCF.
 

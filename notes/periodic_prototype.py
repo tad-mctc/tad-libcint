@@ -77,11 +77,12 @@ def images(lattice, cutoff, periodic=(True, True, True)):
     return torch.cat([shifts[zero], shifts[~zero]])
 
 
-def bloch_int1e(name, basis, positions, lattice, shifts, kfrac):
+def bloch_int1e(name, basis, positions, lattice, shifts, kfrac, kcart=None):
     """
     A(k) = sum_T exp(i k.T) <mu|op|nu(T)> for k-points in fractional
     (reduced) coordinates, k.T = 2 pi kfrac.n: the phases are constants, only
-    the image positions depend on the lattice. Shape (nk, *comp, nao, nao).
+    the image positions depend on the lattice. With `kcart` (Cartesian, 1/bohr)
+    instead, exp(i k.T) with T = n.h. Shape (nk, *comp, nao, nao).
     """
     nimg = len(shifts)
     trans = shifts.to(positions.dtype) @ lattice
@@ -92,7 +93,10 @@ def bloch_int1e(name, basis, positions, lattice, shifts, kfrac):
     full = int1e(name, basis, ext, packed=False)
     nao = full.shape[-1] // nimg
     blocks = full[..., :nao, :].unflatten(-1, (nimg, nao))
-    phase = torch.exp(2j * math.pi * (kfrac @ shifts.T.to(kfrac.dtype)))
+    if kcart is None:
+        phase = torch.exp(2j * math.pi * (kfrac @ shifts.T.to(kfrac.dtype)))
+    else:  # Cartesian k (PySCF's convention), phases depend on the lattice
+        phase = torch.exp(1j * (kcart @ trans.T))
     return torch.einsum("...inj,kn->k...ij", blocks.to(phase.dtype), phase)
 
 
@@ -225,6 +229,26 @@ def main():
     (glat,) = torch.autograd.grad(energy_k(POSITIONS, lat), (lat,))
     flat = fd(LATTICE, lambda l: energy_k(POSITIONS, l))
     print(f"6. j(k): |dE/dh - FD| {(glat - flat).abs().max():.2e}")
+
+    # 7. Cartesian k-points (PySCF's convention). Held fixed, the phases
+    # depend on the lattice; built as 2 pi kfrac h^-T from the lattice, they
+    # reproduce the gradient at fixed fractional k (6.)
+    kcart = 2 * math.pi * kfrac @ torch.linalg.inv(LATTICE).T
+
+    def energy_cart(pos, lat, kc):
+        a = bloch_int1e("j", basis, pos, lat, shifts, None, kcart=kc(lat))
+        return (w.conj() * a).sum().real
+
+    lat = LATTICE.clone().requires_grad_(True)
+    fixed = lambda l: kcart  # noqa: E731
+    (gfix,) = torch.autograd.grad(energy_cart(POSITIONS, lat, fixed), (lat,))
+    ffix = fd(LATTICE, lambda l: energy_cart(POSITIONS, l, fixed))
+    print(f"7. j(k Cartesian, fixed): |dE/dh - FD| {(gfix - ffix).abs().max():.2e},"
+          f" differs from fixed fractional k by {(gfix - glat).abs().max():.1e}")
+    built = lambda l: 2 * math.pi * kfrac @ torch.linalg.inv(l).T  # noqa: E731
+    lat = LATTICE.clone().requires_grad_(True)
+    (gbuilt,) = torch.autograd.grad(energy_cart(POSITIONS, lat, built), (lat,))
+    print(f"   j(k = 2 pi kfrac h^-T): |dE/dh - (6.)| {(gbuilt - glat).abs().max():.2e}")
 
 
 if __name__ == "__main__":

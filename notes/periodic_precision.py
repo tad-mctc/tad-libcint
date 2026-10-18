@@ -26,10 +26,12 @@ tblite  sqrt(2 K / alpha_min) of the cell, capped at 40 bohr (get_cutoff,
 Run from the repository root (needs dxtb's sources for the STO-NG tables and
 GFN2 parameters):
 
-    PYTHONPATH=src:../tad-mctc/src python notes/periodic_precision.py
+    DXTB_SRC=../dxtb/src PYTHONPATH=src:../tad-mctc/src \
+        python notes/periodic_precision.py
 """
 
 import math
+import os
 import time
 import tomllib
 from pathlib import Path
@@ -41,7 +43,7 @@ from tad_mctc.neighbor.images import build_periodic_shifts
 from tad_libcint import Basis, Shell, library
 from tad_libcint.names import IntegralName
 
-DXTB = Path.home() / "Dokumente/dev/dxtb/src/dxtb/_src"
+DXTB = Path(os.environ.get("DXTB_SRC", Path.home() / "Dokumente/dev/dxtb/src")) / "dxtb/_src"
 dd = {"dtype": torch.float64}
 
 PRECISIONS = [1e-6, 1e-8, 1e-10, 1e-12, 1e-14]
@@ -71,7 +73,10 @@ def slater_to_gauss(ng, n, l, zeta):
 def gfn2_basis(numbers):
     with open(DXTB / "param/gfn2/gfn2-xtb.toml", "rb") as f:
         param = tomllib.load(f)
-    symbols = {1: "H", 3: "Li", 6: "C", 9: "F", 14: "Si"}
+    symbols = {
+        1: "H", 3: "Li", 6: "C", 8: "O", 9: "F", 11: "Na", 12: "Mg",
+        14: "Si", 17: "Cl",
+    }
     shells = {}
     for z in sorted(set(numbers)):
         el = param["element"][symbols[z]]
@@ -115,6 +120,16 @@ def systems():
         [c / 2, 2.82, 1.67], [c / 2, 2.82, -1.67],
     ]
     yield "polyethylene (1D)", [6, 6, 1, 1, 1, 1], lat, pos, (1, 0, 0)
+
+    # Not used to choose SAFETY (out of sample)
+    a = 10.66  # NaCl rocksalt
+    yield "NaCl (3D)*", [11, 17], fcc(a), [[0, 0, 0], [a / 2] * 3], (1, 1, 1)
+    a = 7.96  # MgO rocksalt
+    yield "MgO (3D)*", [12, 8], fcc(a), [[0, 0, 0], [a / 2] * 3], (1, 1, 1)
+    # water at the density of ice, one molecule per cubic cell
+    lat = 6.04 * torch.eye(3, **dd)
+    pos = [[0, 0, 0.13], [0, 1.43, -0.98], [0, -1.43, -0.98]]
+    yield "water (3D)*", [8, 1, 1], lat, pos, (1, 1, 1)
 
 
 # Cutoff estimators: keep (i, j, T) if dist <= cutoff(i, j)
