@@ -115,7 +115,9 @@ if(ENABLE_OPENMP)
   # On macOS, PyTorch ships LLVM's libomp (torch/lib), and a second one in the
   # same process aborts ("OMP: Error #15"). Hence, libcgto loads libomp from
   # its rpath, which only holds PyTorch's: next to this package, or the one
-  # of the building Python for editable installs (see setup.py).
+  # of the building Python for editable installs (see setup.py). PyTorch's
+  # libomp exports all entry points that Apple's Clang emits since PyTorch 2.7
+  # (`__kmpc_dispatch_deinit`), hence the minimum version in setup.cfg.
   set(omp_library ${OpenMP_C_LIBRARIES})
   list(FILTER omp_library INCLUDE REGEX "/libomp\\.dylib$")
   if(OpenMP_C_FOUND AND APPLE AND omp_library)
