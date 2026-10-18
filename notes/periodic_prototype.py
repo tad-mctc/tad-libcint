@@ -250,6 +250,21 @@ def main():
     (gbuilt,) = torch.autograd.grad(energy_cart(POSITIONS, lat, built), (lat,))
     print(f"   j(k = 2 pi kfrac h^-T): |dE/dh - (6.)| {(gbuilt - glat).abs().max():.2e}")
 
+    # 8. the chosen semantics: Cartesian input converted to fractional from
+    # values (construction data, no gradient), phases exp(2 pi i kfrac.n).
+    # The lattice gradient must not depend on how the k-points were built.
+    def energy_conv(pos, lat, kc):
+        k = kc(lat).detach()
+        kf = k @ lat.detach().T / (2 * math.pi)
+        a = bloch_int1e("j", basis, pos, lat, shifts, kf)
+        return (w.conj() * a).sum().real
+
+    for label, kc in (("constant", fixed), ("built from h", built)):
+        lat = LATTICE.clone().requires_grad_(True)
+        (gconv,) = torch.autograd.grad(energy_conv(POSITIONS, lat, kc), (lat,))
+        print(f"8. Cartesian k {label}, converted: |dE/dh - (6.)| "
+              f"{(gconv - glat).abs().max():.2e}")
+
 
 if __name__ == "__main__":
     torch.manual_seed(0)

@@ -14,8 +14,9 @@ PYTHONPATH=src:../tad-mctc/src python notes/periodic_prototype.py
 2. **The periodic pair search lives in tad-mctc**, where dxtb can reuse it.
 3. **An accuracy setting, as in other quantum chemistry programs** (PySCF `precision`, tblite `acc`, CP2K `EPS_PGF_ORB`). It replaces the fixed `exp(-60)` and the silent 40 bohr cap. The default is conservative, chosen by benchmark (see [Precision benchmark](#precision-benchmark)).
 4. **1D and 2D periodicity are supported** through the structure's `periodic` mask.
-5. **k-points as in PySCF:** Cartesian, in 1/bohr.
-6. **Batches: each structure has its own k-point set.**
+5. **k-points as in PySCF:** Cartesian input in 1/bohr, and, as PySCF's own stress code does, **fixed fractional k under strain**. The k-points are construction data, converted to fractional coordinates once (see [Decision record](#decision-record-k-points)).
+6. **Batches: each structure has its own k-point set**, held in a `KPoints` Node in tad-mctc (points, weights, mask), packed like structures.
+7. **The Monkhorst–Pack helper lives in tad-mctc**, next to `build_periodic_shifts`.
 
 ## What is needed
 
@@ -118,6 +119,7 @@ libcint's own `exp(-60)` threshold.
 | `"j"` at k-points: dE/dh vs finite differences (k fixed in fractional coordinates) | 3e-11 |
 | `"j"` at Cartesian k held fixed (phases depend on h): dE/dh vs finite differences | 5e-11 |
 | `"j"` at k = 2π κ h⁻ᵀ built from the lattice: dE/dh vs fixed fractional k | 3e-17 |
+| Cartesian k converted to fractional from values (the chosen semantics), constant or built from h: dE/dh vs fixed fractional k | 3e-17 |
 | n-weighted Γ overlap `Σ_T n_T S(T)` antisymmetric | 1e-17 (\|W\| ≈ 7e-3) |
 
 The approach is correct, and the lattice gradient comes for free. With image
@@ -144,12 +146,12 @@ int1e(name, basis, structure, *, kpoints=None, precision=1e-10, ...)
 ```
 
 - **Lattice and mask.** `structure.lattice` and `structure.periodic` come from tad-mctc's `Structure`, which already fills in the mask.
-- **`kpoints`.** As in PySCF: **Cartesian**, in 1/bohr, shape `([batch,] nk, 3)`, with the phase `exp(i k·T)`. `None` means Γ: a real result of shape `([batch,] *comp, nao, nao)`. Otherwise the result is complex, `([batch,] nk, *comp, nao, nao)`.
-  - **Phases are formed in torch** from `kpoints` and `T = n·h`, so they are differentiable in both. Holding Cartesian k fixed, a strain changes the phase too: `∂/∂h_ab e^{ik·T} = i n_a k_b e^{ik·T}`.
-  - **The phase term is cheap.** It needs the n-weighted Bloch sums of the integral *values*, `Σ_T n_a e^{ik·T} A(T)`: the same libcint calls with three more weight rows, no derivative integrals. The same sums give `∂A/∂k = i Σ_T T e^{ik·T} A(T)`, which is PySCF's `kderiv=1`. The prototype checks this term: with Cartesian k fixed, the lattice gradient differs from the one at fixed fractional k by 5e-3, and both match finite differences.
-  - **Monkhorst–Pack grids:** a user builds them from the lattice, `k = 2π κ h⁻ᵀ` (e.g. with a helper). Autograd then sees fractional k held fixed under strain, the physically meaningful stress (verified in the prototype with fractional k).
+- **`kpoints`.** A tad-mctc `KPoints`, or a plain tensor of shape `([batch,] nk, 3)` when no padding is needed. Points are **Cartesian**, in 1/bohr, as in PySCF, and the phase convention is `exp(i k·T)`.
+  - `None` means Γ: a real result of shape `([batch,] *comp, nao, nao)`. Otherwise the result is complex, `([batch,] nk, *comp, nao, nao)`, with zeros at masked (padding) k-points, as for padded AOs.
+  - **The k-points are construction data**, like the image shifts. They are converted once, from values with no gradient, to fractional coordinates `κ = k hᵀ / 2π`. The phases `exp(2πi κ·n)` are then constants.
+  - **Lattice derivatives are taken at fixed fractional k**, as in PySCF's stress code (`pbc/grad/krks_stress.py` re-expresses the k-points of each strained cell from their fractional coordinates). The prototype confirms the gradient comes out the same however the k-points were built: constant, or from the differentiable lattice (test 8).
+  - **No gradient with respect to k.** If band velocities are ever needed, `∂A/∂κ = 2πi Σ_T n e^{2πiκ·n} A(T)` (PySCF's `kderiv=1`) comes from the n-weighted sums of the values. That would be a separate, explicit feature.
   - **Validation:** k-point components along non-periodic axes must be zero.
-  - **Batches:** each structure has its own k-point set. Different numbers of k-points are zero-padded in the output, as AOs are padded now. The input is either a list of `(nk_b, 3)` tensors or a padded tensor with a mask (to decide when implementing).
 - **`precision`.** An absolute threshold on the neglected integrals; see [Precision benchmark](#precision-benchmark) for the estimator and the default.
   - It also sets libcint's own primitive screening through `env[PTR_EXPCUTOFF] = -ln(precision)`. `g1e.c` uses it instead of the default 60, clamped to at least `MIN_EXPCUTOFF` (20, set in `libs/CMakeLists.txt`).
   - Molecular screening (`_SCREENING`) uses the same parameter, so molecules and cells behave alike.
@@ -162,7 +164,7 @@ port of `PBCnr2c_drv`.
 - Inputs: `GTOint2c`'s plus the translations `Ls` (`nimg × 3`) and **weights** (`nw × nimg`), giving `nw` summed matrices of size `nao × nao`.
   - Real weights of 1 give the Γ integral.
   - Real weights `n_T[a]` give the Γ lattice derivative.
-  - Complex `exp(i k·T)` give the k-points, and `n_T[a] exp(i k·T)` both their ket-derivative lattice terms (on derivative integrals) and the phase terms (on values).
+  - Complex `exp(2πi κ·n)` give the k-points, and `n_T[a] exp(2πi κ·n)` their lattice derivatives (on derivative integrals).
   - As in PySCF, buffer the images of a shell pair and contract them with the weights in one product, so the libcint calls are shared by all k-points and derivative weights.
   - Keep a real path for Γ, since complex arithmetic doubles memory and work.
 - Duplicated ket atoms in `atm/bas/env` (PySCF's `conc_env`). `Layout` produces them.
@@ -181,17 +183,12 @@ Memory stays `nw × ncomp × nao²`, independent of the number of images.
 ### Python
 
 - `library.int2c`: optional `translations` and `weights`, real or complex.
-- `Inputs`: add the lattice and the k-points, both differentiable. The integer shifts, the `periodic` mask and the precision belong to the structure function and its `_Block`. They are construction data, like the screened pairs, and carry no gradient.
+- `Inputs`: add the lattice (differentiable). The integer shifts, the `periodic` mask, the fractional k-points with their mask, and the precision belong to the structure function and its `_Block`. They are construction data, like the screened pairs, and carry no gradient.
 - `int1e`: drop the `NotImplementedError`, and reject `r0`/`r0r0`/`nuc` for periodic structures.
 - `_Block.pairs`: `(bra shell, ket shell)` becomes `(bra shell, ket shell, image)`, or a CSR per pair.
 - Gradients of a real loss of a complex output: the incoming gradient is complex, and the contraction takes the real part (`Re Σ conj(g) · dA`).
   - Positions: as now, with Bloch-summed derivative integrals. The bra term goes to atom `i` and the ket term (including the operator term) to atom `j`.
-  - Lattice, two terms:
-    - **Ket term:** `Re Σ_T n_T[a] e^{ik·T} · (ket term of image T)`, the same derivative integrals with weights `n_T e^{ik·T}` (3 weights × 3 directions × nk).
-    - **Phase term,** for Cartesian k held fixed: `Re Σ_T i n_T[a] k_b e^{ik·T} A(T)`, the n-weighted sums of the values contracted with the incoming gradient.
-
-    Along non-periodic axes `n = 0`, so a placeholder vacuum vector gets a zero gradient by construction.
-  - k-points: `Re Σ_T i T_b e^{ik·T} A(T)`, from the same n-weighted value sums.
+  - Lattice: `Re Σ_T n_T[a] e^{2πiκ·n} · (ket term of image T)`, the same derivative integrals with weights `n_T e^{2πiκ·n}` (3 weights × 3 directions × nk). The phases are constant at fixed fractional k, so there is no phase term. Along non-periodic axes `n = 0`, so a placeholder vacuum vector gets a zero gradient by construction.
   - Exponents and coefficients: unchanged, with summed integrals.
   - Forward mode (`_tangent_*`) needs the matching lattice tangent.
 - `_PerStructure`/vmap: the lattice is one more per-structure tensor. tad-mctc already rejects batches that mix molecules and cells. A batch shares one k-point set, or pads it per structure (to decide when implementing).
@@ -207,6 +204,11 @@ in quadrature, `|R_j + n·h - R_i|² ≤ r_i² + r_j²`. Requirements:
 - Built on `build_periodic_shifts` or `NeighborList` (ghost pool), honouring each structure's `periodic` mask. Shifts along non-periodic axes must be dropped by the consumer, because the cutoff check alone does not remove them for short placeholder vectors (see `build_periodic_shifts`' docstring and the prototype's `images`).
 - Half list as in `NeighborList`: one entry stands for `(i, j, +n)` and `(j, i, -n)`. The self-images `i == j, n ≠ 0` appear once per `±n` pair, and the on-site `n = 0` pairs are added by the consumer, as now.
 - Batched structures and `vmap` behave as in the molecular version (construction side, no gradient).
+
+### tad-mctc: k-points
+
+- A `KPoints` Node: `points` (Cartesian, 1/bohr), `weights` and `mask`, plus `pack_kpoints`, as in [Decision record](#decision-record-k-points).
+- A Monkhorst–Pack helper next to `build_periodic_shifts`, returning `KPoints`.
 
 ## Precision benchmark
 
@@ -289,7 +291,59 @@ Not covered yet:
 
 The gradients are exact for the truncated sum, because value and derivatives use the same pair list. Revisit the default once dxtb runs periodic SCF.
 
-## Remaining questions
+## Decision record: k-points
 
-1. **Shape of the batched k-point input:** a list of `(nk_b, 3)` tensors, or a padded tensor with a mask?
-2. **A Monkhorst–Pack helper:** provide one here (so autograd sees fractional k fixed under strain), or leave it to tad-mctc or dxtb?
+### Lattice derivative: fixed fractional or fixed Cartesian k?
+
+Under strain, a k-point can be held fixed in Cartesian coordinates, so that
+its phase `exp(i k·T)` changes with the lattice. Or it can be held fixed in
+fractional coordinates, so that it moves with the reciprocal lattice. For a
+Monkhorst–Pack grid, which samples the Brillouin zone of the cell, only the
+latter is physical: the strained cell is sampled by the same grid. PySCF's
+stress code does exactly this. The two choices differ by 5e-3 in the
+prototype's lattice gradient (test 7).
+
+Three ways to accept Cartesian input "as in PySCF" were considered:
+
+| Option | Result |
+| --- | --- |
+| Phases from Cartesian k in torch (differentiable in h and k) | Fixed-Cartesian stress for constant k. The physical result only if the user builds k from the differentiable lattice *inside* the differentiated function, which `structure.replace(lattice=...)` inside `jacrev` (the pattern the README teaches) silently breaks. |
+| Convert to fractional with a detached lattice, keep k's own gradient | Correct for constant k, but k built from the lattice adds a spurious derivative through k. |
+| **Convert to fractional from values; k carries no gradient** | **The same, physical result however k was built (test 8).** Same principle as tad-mctc's neighbour lists: construction data stays detached, and the differentiable part (here only `T = n·h`) is re-formed at consumption time. |
+
+**Decision:** the third option. It also removes the phase term from the
+lattice gradient.
+
+### Batched k-point input
+
+Each structure of a batch has its own k-point set, possibly of different size.
+
+| Option | Assessment |
+| --- | --- |
+| List of `(nk_b, 3)` tensors | Simple, but cannot pass through `torch.vmap`, on which the package's batch model rests (a batched `Structure` is resolved under vmap). |
+| Padded tensor with a sentinel (k = 0 or NaN) | k = 0 is Γ, a valid point; NaN poisons autograd. |
+| Padded tensor, padding marked by weight 0 | Zero-weight k-points are legitimate (band-structure paths in VASP-style hybrid calculations). |
+| Padded tensor plus a separate mask argument | Works under vmap, but two loose arguments must stay in sync, and the weights live elsewhere. |
+| **`KPoints` Node** (tad-mctc): `points` `([batch,] nk, 3)`, `weights` `([batch,] nk)`, `mask` `([batch,] nk)`, plus `pack_kpoints` | **Mirrors `Structure`/`pack_structures`**, passes through vmap and `torch.func` like every other Node, and keeps points, weights and mask together. |
+
+**Decision:** a `KPoints` Node in tad-mctc. A plain tensor is still accepted
+when no padding is needed.
+
+- `mask` defaults to all true. `weights` default to `1/nk`, as in PySCF's `KPoints`, which also stores Cartesian and fractional points with weights.
+- tad-libcint ignores the weights. dxtb needs them for densities and energies, and any symmetry or time-reversal reduction changes them. A k-point set without its weights invites mistakes.
+- k-points stay separate from `Structure`: they are a property of the calculation, not of the system. One structure may need several sets, e.g. an SCF grid and a band path.
+
+### Where the Monkhorst–Pack helper lives
+
+| Option | Assessment |
+| --- | --- |
+| tad-libcint | An integral library that only consumes k-points; generating them is not its job. |
+| dxtb | Hides a geometric utility in the application; other tad packages could not use it. |
+| **tad-mctc** | **Lattice geometry, next to `build_periodic_shifts`.** It returns the `KPoints` Node defined there, and dxtb and the tests use it. |
+
+**Decision:** tad-mctc.
+
+- Scope, as PySCF's `make_kpts`: a mesh per periodic axis (one point along non-periodic axes), Γ-centred or Monkhorst–Pack shifted (PySCF's `with_gamma_point`), an optional `scaled_center`, uniform weights.
+- Later, possibly a mesh from a k-point density, like VASP's `KSPACING`.
+- Under the semantics above, the helper's output needs no gradient.
+- Deferred: time-reversal reduction (`A(-k) = A(k)*` for a real basis, halving the k-points with doubled weights) and space-group reduction (spglib). Both change only the points and weights in the Node, not the integrals.
