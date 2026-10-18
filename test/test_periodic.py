@@ -521,3 +521,116 @@ def test_errors(basis: Basis) -> None:
     assert cell.lattice is not None
     with pytest.raises(ValueError, match="non-periodic axis"):
         int1e("ovlp", basis, cell, kpoints=to_cartesian(KFRAC, cell.lattice))
+
+
+# more transforms
+
+
+@pytest.mark.parametrize("wrt", ["alphas", "coeffs"])
+@pytest.mark.parametrize("kpoints", [False, True], ids=["gamma", "k"])
+def test_jacobians_parameters(wrt: str, kpoints: bool) -> None:
+    """jacrev and jacfwd w.r.t. the basis parameters agree for a cell."""
+    basis = Basis(shells=element_shells())
+    func, x = _cell_func("jj", basis, OH_CELL, kpoints, wrt)
+    rev = jacrev(func)(x)
+    fwd = jacfwd(func)(x)
+    assert torch.allclose(rev, fwd, atol=1e-12)
+    assert rev.abs().max() > 1e-3
+
+
+@pytest.mark.parametrize("kpoints", [False, True], ids=["gamma", "k"])
+def test_gradgrad_mixed(kpoints: bool) -> None:
+    """Second derivatives w.r.t. positions and lattice together."""
+    basis = Basis(shells=element_shells())
+
+    def func(positions: torch.Tensor, lattice: torch.Tensor) -> torch.Tensor:
+        cell = OH_CELL.replace(positions=positions, lattice=lattice)
+        kcart = to_cartesian(KFRAC, lattice) if kpoints else None
+        out = int1e("j", basis, cell, kpoints=kcart)
+        return torch.view_as_real(out) if out.is_complex() else out
+
+    assert OH_CELL.lattice is not None
+    args = (
+        OH_CELL.positions.clone().requires_grad_(True),
+        OH_CELL.lattice.clone().requires_grad_(True),
+    )
+    assert gradgradcheck(func, args, atol=1e-6, fast_mode=True)
+
+
+def test_vmap_structures(basis: Basis) -> None:
+    """`vmap` over a batched cell and k-point set equals the batch."""
+    assert WATER_CELL.lattice is not None and OH_CELL.lattice is not None
+    batch = pack_structures([WATER_CELL, OH_CELL])
+    kpoints = pack_kpoints(
+        [
+            make_kpoints(WATER_CELL.lattice, (2, 1, 1)),
+            make_kpoints(OH_CELL.lattice, (1, 2, 2)),
+        ]
+    )
+
+    def func(structure: Structure, kpts: KPoints) -> torch.Tensor:
+        return int1e("j", basis, structure, kpoints=kpts)
+
+    out = vmap(func)(batch, kpoints)
+    assert torch.allclose(out, func(batch, kpoints), atol=1e-14)
+
+
+def test_batch_mixed_periodicity(basis: Basis) -> None:
+    """A batch of a 3D cell, a 2D slab and a cell without periodic axes."""
+    slab = _with_periodic(WATER_CELL, [True, True, False])
+    box = OH_CELL.replace(periodic=torch.tensor([False] * 3))
+    cells = [WATER_CELL, slab, box]
+    batch = pack_structures(cells)
+
+    kpts = []
+    for cell in cells:
+        assert cell.lattice is not None and cell.periodic is not None
+        kfrac = KFRAC * cell.periodic.to(DTYPE)
+        kpts.append(KPoints(points=to_cartesian(kfrac, cell.lattice)))
+
+    for kpoints in (None, pack_kpoints(kpts)):
+        out = int1e("jj", basis, batch, kpoints=kpoints)
+        for b, cell in enumerate(cells):
+            ref = int1e(
+                "jj",
+                basis,
+                cell,
+                kpoints=None if kpoints is None else kpts[b],
+            )
+            nao = ref.shape[-1]
+            assert torch.allclose(out[b, ..., :nao, :nao], ref, atol=1e-14)
+
+    molecule = Structure(numbers=box.numbers, positions=box.positions)
+    nao = int1e("jj", basis, molecule).shape[-1]
+    assert torch.allclose(
+        int1e("jj", basis, batch)[2, ..., :nao, :nao],
+        int1e("jj", basis, molecule),
+        atol=1e-14,
+    )
+
+
+@pytest.mark.large
+def test_precision_ionic() -> None:
+    """At the default precision, a rocksalt cell with a diffuse cation stays
+    within it (the benchmark's LiF, here with the library's bound)."""
+    shells: dict[int, list[ShellSpec]] = {
+        3: [
+            (0, [5.0, 0.6, 0.03], [0.3, 0.5, 0.3]),
+            (1, [0.4, 0.025], [0.7, 0.4]),
+        ],
+        9: [
+            (0, [20.0, 3.0, 0.8], [0.2, 0.5, 0.4]),
+            (1, [4.0, 0.9, 0.25], [0.4, 0.5, 0.3]),
+        ],
+    }
+    basis = Basis(shells=make_shells(shells)).normalized()
+    a = 7.61
+    cell = Structure(
+        numbers=torch.tensor([3, 9]),
+        positions=torch.tensor([[0.0, 0.0, 0.0], [a / 2, a / 2, a / 2]], **dd),
+        lattice=0.5 * a * torch.tensor([[0, 1, 1], [1, 0, 1], [1, 1, 0]], **dd),
+    )
+    for name in ("ovlp", "j", "jj"):
+        out = int1e(name, basis, cell, packed=False)
+        ref = _reference(_name(name, packed=False), basis, cell)
+        assert (out - ref).abs().max() <= 1e-10

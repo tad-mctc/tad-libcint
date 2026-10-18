@@ -20,8 +20,8 @@ Test the integrals under `torch.compile`.
 libcint is called through ctypes inside custom autograd functions, which
 Dynamo cannot trace: the integrals compile with graph breaks, with values and
 gradients (`.backward()`) equal to eager mode. Compiling them as one graph
-(`fullgraph=True`) and compiling `torch.func` transforms of them fail; these
-tests record that, so that a change in either direction is noticed.
+(`fullgraph=True`) fails, and so does compiling `torch.func` transforms of
+them (at least with torch 2.7); these tests record that.
 
 The backend is ``aot_eager``, which traces with Dynamo and AOTAutograd without
 generating code (independent of a C++ toolchain).
@@ -35,11 +35,17 @@ import pytest
 import torch
 from tad_mctc.io.structure import Structure
 from tad_mctc.kpoints import to_cartesian
+from tad_mctc.tools.compile import is_compile_supported
+from tad_mctc.tools.testing import COMPILE_UNSUPPORTED_REASON
 
 from tad_libcint import Basis, int1e
 
 from .data import WATER, element_shells
 from .test_periodic import KFRAC, WATER_CELL
+
+pytestmark = pytest.mark.skipif(
+    not is_compile_supported(), reason=COMPILE_UNSUPPORTED_REASON
+)
 
 BACKEND = "aot_eager"
 
@@ -104,7 +110,7 @@ def test_fullgraph(case: str) -> None:
 
 
 @pytest.mark.xfail(
-    strict=True,
+    strict=False,  # a version-specific Dynamo error (seen with torch 2.7)
     reason="Dynamo fails on the custom autograd functions inside "
     "`torch.func` transforms",
 )
