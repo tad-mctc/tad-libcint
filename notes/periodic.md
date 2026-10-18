@@ -12,8 +12,10 @@ PYTHONPATH=src:../tad-mctc/src python notes/periodic_prototype.py
 
 1. **Γ point and k-points.** Complex Bloch weights from the start, with a real fast path at Γ.
 2. **The periodic pair search lives in tad-mctc**, where dxtb can reuse it.
-3. **An accuracy setting, as in other quantum chemistry programs** (PySCF `precision`, tblite `acc`, CP2K `EPS_PGF_ORB`). It replaces the fixed `exp(-60)` and the silent 40 bohr cap.
+3. **An accuracy setting, as in other quantum chemistry programs** (PySCF `precision`, tblite `acc`, CP2K `EPS_PGF_ORB`). It replaces the fixed `exp(-60)` and the silent 40 bohr cap. The default is conservative, chosen by benchmark (see [Precision benchmark](#precision-benchmark)).
 4. **1D and 2D periodicity are supported** through the structure's `periodic` mask.
+5. **k-points as in PySCF:** Cartesian, in 1/bohr.
+6. **Batches: each structure has its own k-point set.**
 
 ## What is needed
 
@@ -140,15 +142,15 @@ int1e(name, basis, structure, *, kpoints=None, precision=1e-?, ...)
 ```
 
 - **Lattice and mask.** `structure.lattice` and `structure.periodic` come from tad-mctc's `Structure`, which already fills in the mask.
-- **`kpoints`.** In **fractional (reduced) coordinates**, shape `(nk, 3)`. `None` means Γ: a real result of shape `(*comp, nao, nao)`. Otherwise the result is complex, `(nk, *comp, nao, nao)`.
-  - Fractional k gives `k·T = 2π κ·n`, so the phases are constants. Under strain the Monkhorst–Pack grid moves with the cell, and the lattice derivative only passes through the image positions (verified above).
-  - Cartesian k, as in PySCF's `kpts`, would make the phases depend on the lattice. If wanted, accept it as a separate convenience and convert it once.
-  - k-point components along non-periodic axes must be zero; validate this.
-- **`precision`.** An absolute threshold on the neglected integrals.
-  - It sets per-shell radii (PySCF's `_estimate_rcut` formula, or a simpler `exp(-α r²/2)` bound with the l and coefficient prefactors) and per-pair radii added in quadrature.
+- **`kpoints`.** As in PySCF: **Cartesian**, in 1/bohr, shape `([batch,] nk, 3)`, with the phase `exp(i k·T)`. `None` means Γ: a real result of shape `([batch,] *comp, nao, nao)`. Otherwise the result is complex, `([batch,] nk, *comp, nao, nao)`.
+  - **Phases are formed in torch** from `kpoints` and `T = n·h`, so they are differentiable in both. Holding Cartesian k fixed, a strain changes the phase too: `∂/∂h_ab e^{ik·T} = i n_a k_b e^{ik·T}`.
+  - **The derivatives cost nothing extra.** That phase term needs only the n-weighted Bloch sums `Σ_T n_a e^{ik·T} A(T)`, which the lattice derivative computes anyway. The same sums give `∂A/∂k = i Σ_T T e^{ik·T} A(T)`, which is PySCF's `kderiv=1`.
+  - **Monkhorst–Pack grids:** a user builds them from the lattice, `k = 2π κ h⁻ᵀ` (e.g. with a helper). Autograd then sees fractional k held fixed under strain, the physically meaningful stress (verified in the prototype with fractional k).
+  - **Validation:** k-point components along non-periodic axes must be zero.
+  - **Batches:** each structure has its own k-point set. Different numbers of k-points are zero-padded in the output, as AOs are padded now. The input is either a list of `(nk_b, 3)` tensors or a padded tensor with a mask (to decide when implementing).
+- **`precision`.** An absolute threshold on the neglected integrals; see [Precision benchmark](#precision-benchmark) for the estimator and the default.
   - It also sets libcint's own primitive screening through `env[PTR_EXPCUTOFF] = -ln(precision)`. `g1e.c` uses it instead of the default 60, clamped to at least `MIN_EXPCUTOFF` (20, set in `libs/CMakeLists.txt`).
   - Molecular screening (`_SCREENING`) uses the same parameter, so molecules and cells behave alike.
-  - The default should be benchmarked: PySCF uses 1e-8, and tblite's `acc = 1` maps to `intcut = 25`, about 1e-11.
 
 ### C: a lattice-sum driver
 
@@ -199,8 +201,76 @@ in quadrature, `|R_j + n·h - R_i|² ≤ r_i² + r_j²`. Requirements:
 - Half list as in `NeighborList`: one entry stands for `(i, j, +n)` and `(j, i, -n)`. The self-images `i == j, n ≠ 0` appear once per `±n` pair, and the on-site `n = 0` pairs are added by the consumer, as now.
 - Batched structures and `vmap` behave as in the molecular version (construction side, no gradient).
 
+## Precision benchmark
+
+[`periodic_precision.py`](periodic_precision.py) uses the GFN2-xTB basis,
+STO-NG expanded from dxtb's `gfn2-xtb.toml` and `sto-ng` tables. The cells
+are diamond, silicon and LiF (3D), graphene (2D, 20 bohr vacuum vector) and
+polyethylene (1D).
+
+Method:
+
+- Every block `<μ(R_i)|op|ν(R_j + T)>` is evaluated once, within the exp(-60) reference cutoff (up to 59319 images for LiF).
+- For each estimator and precision p, the blocks it would skip are dropped.
+- Error: `max_μν Σ_T |dropped A_T|`, a bound valid at every k-point, for `ovlp`, `j` and `jj`.
+- Cost: the share of the reference's (atom pair, image) blocks that are kept.
+
+Estimators (K = -ln p):
+
+| Estimator | Cutoff |
+| --- | --- |
+| gauss | per atom `sqrt(K/α_min)`, pairs in quadrature: the Gaussian product factor below p (tad-libcint's molecular screening, there K = 60) |
+| tblite | global `sqrt(2K/α_min)`, capped at 40 bohr (`get_cutoff` with `intcut = K`) |
+| pyscf | global maximum of PySCF's `_estimate_rcut(α, l, c, p)` (`cell.rcut`) |
+| bound⟨n⟩ | per element pair: largest bound over the primitive pairs (sketched below), times the number of images within one decay length `1/(2μR)` at R (from the cell's volume, area or length), compared with p/10 |
+
+The primitive-pair bound for an operator of rank n about the ket is
+
+    |c_a c_b| f_a f_b (π/(a+b))^1.5 (bR/(a+b) + w)^l_a (aR/(a+b) + w)^(l_b+n) exp(-ab/(a+b) R²)
+
+with libcint's angular factors `f` and the product width `w = 1/sqrt(2(a+b))`.
+
+Results over all five cells, as the worst error/p over the cells (≤ 1 is safe):
+
+| p | Estimator | Kept | Worst err/p, all three integrals | Worst err/p, overlap |
+| --- | --- | --- | --- | --- |
+| 1e-8 | gauss | 17–56% | 7e4 | 2e2 |
+| 1e-8 | tblite | 18–61% | 3e5 | 1e3 |
+| 1e-8 | pyscf | 31–61% | 6e2 | 1.7 |
+| 1e-8 | bound0 | 27–60% | 18 | 0.13 |
+| 1e-8 | **bound2** | 34–61% | **0.08** | 0.003 |
+| 1e-10 | gauss | 23–61% | 1e5 | 6e2 |
+| 1e-10 | tblite | 23–61% | 3e7 | 1e5 |
+| 1e-10 | pyscf | 42–71% | 6e2 | 1.3 |
+| 1e-10 | bound0 | 34–61% | 18 | 0.16 |
+| 1e-10 | **bound2** | 45–71% | **0.04** | 0.001 |
+| 1e-12 | gauss | 31–70% | 1e5 | 4e2 |
+| 1e-12 | tblite | 25–71% | 3e9 | 1e7 |
+| 1e-12 | pyscf | 50–80% | 8e2 | 1.5 |
+| 1e-12 | bound0 | 45–71% | 17 | 0.07 |
+| 1e-12 | **bound2** | 56–75% | **0.1** | 0.002 |
+
+Findings:
+
+- **The Gaussian product factor alone is not a precision.** It ignores the coefficients, the polynomial prefactors, the moment operators (which grow with R) and the sum over images. Its errors exceed p by up to 1e5×.
+- **tblite's 40 bohr cap is a real accuracy limit.** In LiF the error stays at 1e-5 (overlap) and 3e-3 (quadrupole), whatever the accuracy. tblite's rule is otherwise the Gaussian product rule with a global exponent.
+- **PySCF's estimate is safe for the overlap** (within 1.7×), but **not for the moments.** It is built for overlap and kinetic integrals, and fails for `j`/`jj` in LiF by up to 800×.
+- **The per-pair bound with the operator's rank is safe everywhere**, usually by orders of magnitude, at the cost of PySCF's estimate or less (LiF at 1e-10: 51% kept against PySCF's 57%, which fails). `bound0` suffices for the overlap alone.
+
+Recommendation:
+
+- **Estimator:** use `bound⟨n⟩` with n the highest operator rank requested in one call. dxtb computes `ovlp`, `j` and `jj` together, so n = 2.
+- **Default:** `precision = 1e-10`. With the margin of the bound, the actual errors stay below 4e-12 in all five cells, which is conservative in effect. It is tighter than PySCF's 1e-8 and comparable to tblite's `acc = 1` (`intcut = 25`, about 1e-11). `1e-12` costs 10–25% more blocks.
+
+Not covered yet:
+
+- Errors of energies and gradients, rather than of integral matrices.
+- The derivative integrals' own truncation error.
+- More diffuse bases (GFN1's second hydrogen s shell, the q-vSZP basis of g-xTB).
+
+The gradients are exact for the truncated sum, because value and derivatives use the same pair list. Revisit the default once dxtb runs periodic SCF.
+
 ## Remaining questions
 
-1. Default `precision`: benchmark accuracy against cost on a few dxtb-relevant cells (the 1e-8 to 1e-11 range).
-2. Should k-points also be accepted in Cartesian coordinates, or only fractional?
-3. Batches: one shared k-point set, or per-structure sets padded to a common count?
+1. **Shape of the batched k-point input:** a list of `(nk_b, 3)` tensors, or a padded tensor with a mask?
+2. **A Monkhorst–Pack helper:** provide one here (so autograd sees fractional k fixed under strain), or leave it to tad-mctc or dxtb?
