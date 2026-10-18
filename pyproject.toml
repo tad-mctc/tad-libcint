@@ -43,6 +43,11 @@ skip = "*musllinux*"
 [tool.cibuildwheel.linux]
 archs = ["x86_64"]
 
+[tool.cibuildwheel.macos]
+# libcgto uses PyTorch's libomp (see libs/CMakeLists.txt) instead of a copy,
+# which delocate cannot resolve without PyTorch in the build environment
+repair-wheel-command = "delocate-wheel --require-archs {delocate_archs} --exclude libomp.dylib --ignore-missing-dependencies -w {dest_dir} -v {wheel}"
+
 
 [tool.mypy]
 check_untyped_defs = true

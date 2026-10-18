@@ -89,6 +89,19 @@ target_include_directories(cgto PRIVATE ${PROJECT_SOURCE_DIR})
 target_link_libraries(cgto PRIVATE cint m)
 
 if(ENABLE_OPENMP)
+  # Apple's Clang lacks the OpenMP header and runtime; take Homebrew's libomp
+  if(APPLE AND NOT DEFINED OpenMP_ROOT)
+    find_program(BREW_EXECUTABLE brew)
+    if(BREW_EXECUTABLE)
+      execute_process(
+        COMMAND ${BREW_EXECUTABLE} --prefix libomp
+        OUTPUT_VARIABLE OpenMP_ROOT
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+      )
+    endif()
+  endif()
+
   find_package(OpenMP)
   if(OpenMP_C_FOUND AND MINGW)
     # The imported target links the import library of libgomp's DLL, which
@@ -97,6 +110,39 @@ if(ENABLE_OPENMP)
     target_link_options(cgto PRIVATE ${OpenMP_C_FLAGS})
   elseif(OpenMP_C_FOUND)
     target_link_libraries(cgto PRIVATE OpenMP::OpenMP_C)
+  endif()
+
+  # On macOS, PyTorch ships LLVM's libomp (torch/lib), and a second one in the
+  # same process aborts ("OMP: Error #15"). Hence, libcgto loads libomp from
+  # its rpath, which only holds PyTorch's: next to this package, or the one
+  # of the building Python for editable installs (see setup.py). PyTorch's
+  # libomp exports all entry points that Apple's Clang emits since PyTorch 2.7
+  # (`__kmpc_dispatch_deinit`), hence the minimum version in setup.cfg.
+  set(omp_library ${OpenMP_C_LIBRARIES})
+  list(FILTER omp_library INCLUDE REGEX "/libomp\\.dylib$")
+  if(OpenMP_C_FOUND AND APPLE AND omp_library)
+    execute_process(
+      COMMAND otool -D ${omp_library}
+      OUTPUT_VARIABLE omp_install_name
+      OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+    # the first line is the file name, the second its install name
+    string(REGEX REPLACE "^[^\n]*\n" "" omp_install_name "${omp_install_name}")
+    message(STATUS "Loading ${omp_install_name} from PyTorch's lib directory")
+    add_custom_command(
+      TARGET cgto POST_BUILD
+      COMMAND ${CMAKE_INSTALL_NAME_TOOL}
+        -change "${omp_install_name}" "@rpath/libomp.dylib"
+        "$<TARGET_FILE:cgto>"
+    )
+    set_property(
+      TARGET cgto APPEND PROPERTY INSTALL_RPATH "@loader_path/../torch/lib"
+    )
+    if(TORCH_LIBRARY_DIR)
+      set_property(
+        TARGET cgto APPEND PROPERTY INSTALL_RPATH "${TORCH_LIBRARY_DIR}"
+      )
+    endif()
   endif()
 endif()
 

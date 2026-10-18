@@ -17,6 +17,14 @@ The `tad-libcint` package can be obtained from pip.
 Wheels are available for Linux (x86_64), macOS (Apple silicon) and Windows (x86_64), the platforms of PyTorch's wheels.
 One wheel serves all supported Python versions.
 
+Threads
+~~~~~~~
+
+The integrals are evaluated in parallel over shell pairs with OpenMP.
+On Linux and macOS, the libraries of the wheels use PyTorch's OpenMP runtime and hence its number of threads, set with ``torch.set_num_threads`` or the ``OMP_NUM_THREADS`` environment variable (by default, one thread per physical core).
+On Linux, ``MKL_NUM_THREADS`` takes precedence over ``OMP_NUM_THREADS`` for PyTorch.
+On Windows, the libraries have an OpenMP runtime of their own, which only follows ``OMP_NUM_THREADS`` (by default, one thread per logical core).
+
 
 Build from source
 ~~~~~~~~~~~~~~~~~
@@ -45,7 +53,7 @@ If you already have the repository, you can update the submodule with
     git submodule update --remote
 
 The build requires CMake (≥ 3.18) and a C compiler (with OpenMP for parallel integral evaluation).
-On macOS, Apple's Clang (Xcode Command Line Tools) builds without OpenMP.
+On macOS, Apple's Clang (Xcode Command Line Tools) builds with OpenMP if Homebrew's libomp is installed (``brew install libomp``). The libraries then use PyTorch's OpenMP runtime, since a second one in the same process aborts. Editable installs find it only with PyTorch in the build environment (``pip install --no-build-isolation -e .``) and otherwise build without OpenMP.
 On Windows, *libcint* needs the GCC of `MinGW-w64 <https://www.msys2.org/>`__, since MSVC lacks C99 complex numbers, e.g., the MSYS2 packages ``mingw-w64-ucrt-x86_64-gcc``, ``mingw-w64-ucrt-x86_64-libgomp`` (OpenMP) and ``mingw-w64-ucrt-x86_64-make`` on the ``PATH``.
 The steps below use conda and apply to Linux.
 

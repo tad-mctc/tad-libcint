@@ -49,6 +49,10 @@ jobs:
       - name: Checkout submodules
         run: git submodule update --init --recursive
 
+      # the OpenMP header and runtime for Apple's Clang (see CMakeLists.txt)
+      - name: Install libomp
+        run: brew install libomp
+
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v4
         with:
@@ -71,3 +75,73 @@ jobs:
         run: tox -e $TOXENV
         env:
           TOXENV: ${{ env.TOXENV }}
+
+      # libcgto must load PyTorch's libomp through the rpath (see CMakeLists.txt)
+      - name: Show the libraries' dependencies and rpaths
+        if: always()
+        run: |
+          libs=(.tox/${TOXENV}/lib/python*/site-packages/tad_libcint/*.so)
+          otool -L "${libs[@]}"
+          otool -l "${libs[@]}" | grep -A2 LC_RPATH
+          otool -L .tox/${TOXENV}/lib/python*/site-packages/tad_libcint/libcgto_tad.so | grep "@rpath/libomp.dylib"
+        env:
+          TOXENV: ${{ env.TOXENV }}
+
+  # Editable installs load PyTorch's libomp from the building Python, which
+  # build isolation hides, so they then build without OpenMP (see setup.py).
+  editable:
+    runs-on: macos-15
+
+    permissions:
+      contents: read
+
+    defaults:
+      run:
+        shell: bash -e {0}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          submodules: "recursive"
+
+      - name: Install libomp
+        run: brew install libomp
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install torch --extra-index-url https://download.pytorch.org/whl/cpu
+
+      - name: Editable install without build isolation
+        run: python -m pip install --no-build-isolation -e ".[tox]"
+
+      - name: Check that libcgto loads PyTorch's libomp
+        run: |
+          otool -L src/tad_libcint/libcgto_tad.so
+          otool -l src/tad_libcint/libcgto_tad.so | grep -A2 LC_RPATH
+          torch_lib=$(python -c "import os, torch; print(os.path.join(os.path.dirname(torch.__file__), 'lib'))")
+          otool -L src/tad_libcint/libcgto_tad.so | grep -q "@rpath/libomp.dylib"
+          otool -l src/tad_libcint/libcgto_tad.so | grep -q "path ${torch_lib} "
+
+      - name: Unittests (with OpenMP)
+        run: pytest -n logical test
+
+      - name: Editable install with build isolation
+        run: |
+          rm -rf build src/tad_libcint/lib*_tad.so
+          python -m pip install -e .
+
+      - name: Check that libcgto is built without OpenMP
+        run: |
+          otool -L src/tad_libcint/libcgto_tad.so
+          ! otool -L src/tad_libcint/libcgto_tad.so | grep -q libomp
+
+      - name: Unittests (without OpenMP)
+        run: pytest -n logical test
