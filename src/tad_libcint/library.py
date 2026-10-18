@@ -352,4 +352,3 @@ def int2c_lattice(
         len(env),
     )
     return out.swapaxes(-1, -2).reshape(nw, *out_shape, nao_bra, nao_ket)
-

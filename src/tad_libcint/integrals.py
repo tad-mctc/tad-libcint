@@ -509,7 +509,6 @@ class _Images(NamedTuple):
         return self.shifts @ _to_numpy(lattice)
 
 
-
 class _Block(NamedTuple):
     """
     Block of an integral matrix: its bra (rows) and ket (columns) shells.

@@ -141,7 +141,9 @@ def element_shells() -> dict[int, list[Shell]]:
     return make_shells(ELEMENT_SHELLS)
 
 
-def pyscf_shells(mol: Any, numbers: Sequence[int]) -> dict[int, list[ShellSpec]]:
+def pyscf_shells(
+    mol: Any, numbers: Sequence[int]
+) -> dict[int, list[ShellSpec]]:
     """
     The shells of a PySCF molecule or cell per element, with PySCF's
     normalized coefficients (PySCF places shells per atom)
