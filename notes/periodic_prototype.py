@@ -63,7 +63,9 @@ def tad_basis(cell):
                 coeffs=torch.tensor(cell._libcint_ctr_coeff(ish)[:, 0], **dd),
             )
         )
-    shells = {z: next(iter(per_atom.values())) for z, per_atom in elements.items()}
+    shells = {
+        z: next(iter(per_atom.values())) for z, per_atom in elements.items()
+    }
     return Basis(shells=shells, spherical=False)
 
 
@@ -136,17 +138,23 @@ def main():
     t = time.perf_counter()
     ref = torch.from_numpy(cell.pbc_intor("int1e_ovlp", hermi=0))
     t_pyscf = time.perf_counter() - t
-    print(f"1. |S - S_pyscf|max = {(s - ref).abs().max():.2e}"
-          f"  (tad {t_tad:.2f} s, pyscf {t_pyscf:.3f} s)")
-    print(f"   molecular S would differ by {(s - int1e('ovlp', basis, Structure(numbers=NUMBERS, positions=POSITIONS))).abs().max():.2e}")
+    print(
+        f"1. |S - S_pyscf|max = {(s - ref).abs().max():.2e}"
+        f"  (tad {t_tad:.2f} s, pyscf {t_pyscf:.3f} s)"
+    )
+    print(
+        f"   molecular S would differ by {(s - int1e('ovlp', basis, Structure(numbers=NUMBERS, positions=POSITIONS))).abs().max():.2e}"
+    )
 
     # 2./3. multipole conventions and symmetry
     for name in ("j", "jj"):
         ket = periodic_int1e(name, basis, POSITIONS, LATTICE, shifts, "ket")
         bra = periodic_int1e(name, basis, POSITIONS, LATTICE, shifts, "bra")
-        print(f"2. {name}: |ket-fold - bra-fold (tblite)|max = "
-              f"{(ket - bra).abs().max():.2e},  asymmetry "
-              f"{(ket - ket.mT).abs().max():.2e}")
+        print(
+            f"2. {name}: |ket-fold - bra-fold (tblite)|max = "
+            f"{(ket - bra).abs().max():.2e},  asymmetry "
+            f"{(ket - ket.mT).abs().max():.2e}"
+        )
     print(f"3. overlap asymmetry {(s - s.mT).abs().max():.2e}")
 
     # wrapping an atom into a neighbouring cell leaves the Gamma sum unchanged
@@ -155,11 +163,15 @@ def main():
     sw = periodic_int1e("ovlp", basis, wrapped, LATTICE, shifts)
     jw = periodic_int1e("j", basis, wrapped, LATTICE, shifts)
     j0 = periodic_int1e("j", basis, POSITIONS, LATTICE, shifts)
-    print(f"   wrapped atom: dS {(sw - s).abs().max():.2e}, dj {(jw - j0).abs().max():.2e}")
+    print(
+        f"   wrapped atom: dS {(sw - s).abs().max():.2e}, dj {(jw - j0).abs().max():.2e}"
+    )
 
     # 4. gradients w.r.t. positions and lattice (fixed Cartesian positions)
     for name in ("ovlp", "j"):
-        w = torch.randn_like(periodic_int1e(name, basis, POSITIONS, LATTICE, shifts))
+        w = torch.randn_like(
+            periodic_int1e(name, basis, POSITIONS, LATTICE, shifts)
+        )
 
         def energy(pos, lat):
             return (w * periodic_int1e(name, basis, pos, lat, shifts)).sum()
@@ -182,8 +194,10 @@ def main():
 
         fpos = fd(POSITIONS, lambda p: energy(p, LATTICE))
         flat = fd(LATTICE, lambda l: energy(POSITIONS, l))
-        print(f"4. {name}: |dE/dR - FD| {(gpos - fpos).abs().max():.2e}, "
-              f"|dE/dh - FD| {(glat - flat).abs().max():.2e}")
+        print(
+            f"4. {name}: |dE/dR - FD| {(gpos - fpos).abs().max():.2e}, "
+            f"|dE/dh - FD| {(glat - flat).abs().max():.2e}"
+        )
 
         # strain derivative (tblite's sigma) from the lattice and position
         # gradients: sigma = (dE/dh)^T h + (dE/dR)^T R
@@ -200,7 +214,9 @@ def main():
 
     # 5. k-points and 1D/2D periodicity vs PySCF (dimension = number of
     # leading periodic axes there)
-    kfrac = torch.tensor([[0.0, 0.0, 0.0], [0.25, 0.0, 0.5], [0.5, -0.25, 0.125]], **dd)
+    kfrac = torch.tensor(
+        [[0.0, 0.0, 0.0], [0.25, 0.0, 0.5], [0.5, -0.25, 0.125]], **dd
+    )
     for dim in (3, 2, 1):
         periodic = tuple(a < dim for a in range(3))
         k = kfrac * torch.tensor(periodic, **dd)  # no k along vacuum axes
@@ -212,11 +228,17 @@ def main():
         shifts_d = images(lat_d, cutoff, periodic)
         out = bloch_int1e("ovlp", basis, POSITIONS, lat_d, shifts_d, k)
         ref = torch.from_numpy(
-            np.asarray(cell_d.pbc_intor("int1e_ovlp", kpts=cell_d.get_abs_kpts(k.numpy())))
+            np.asarray(
+                cell_d.pbc_intor(
+                    "int1e_ovlp", kpts=cell_d.get_abs_kpts(k.numpy())
+                )
+            )
         )
         herm = (out - out.mT.conj()).abs().max()
-        print(f"5. {dim}D, {len(shifts_d)} images: |S(k) - S_pyscf(k)| "
-              f"{(out - ref).abs().max():.2e}, |S(k) - S(k)^H| {herm:.2e}")
+        print(
+            f"5. {dim}D, {len(shifts_d)} images: |S(k) - S_pyscf(k)| "
+            f"{(out - ref).abs().max():.2e}, |S(k) - S(k)^H| {herm:.2e}"
+        )
 
     # 6. lattice gradient at k-points fixed in fractional coordinates
     w = torch.randn(len(kfrac), 3, *s.shape, dtype=torch.complex128)
@@ -243,12 +265,16 @@ def main():
     fixed = lambda l: kcart  # noqa: E731
     (gfix,) = torch.autograd.grad(energy_cart(POSITIONS, lat, fixed), (lat,))
     ffix = fd(LATTICE, lambda l: energy_cart(POSITIONS, l, fixed))
-    print(f"7. j(k Cartesian, fixed): |dE/dh - FD| {(gfix - ffix).abs().max():.2e},"
-          f" differs from fixed fractional k by {(gfix - glat).abs().max():.1e}")
+    print(
+        f"7. j(k Cartesian, fixed): |dE/dh - FD| {(gfix - ffix).abs().max():.2e},"
+        f" differs from fixed fractional k by {(gfix - glat).abs().max():.1e}"
+    )
     built = lambda l: 2 * math.pi * kfrac @ torch.linalg.inv(l).T  # noqa: E731
     lat = LATTICE.clone().requires_grad_(True)
     (gbuilt,) = torch.autograd.grad(energy_cart(POSITIONS, lat, built), (lat,))
-    print(f"   j(k = 2 pi kfrac h^-T): |dE/dh - (6.)| {(gbuilt - glat).abs().max():.2e}")
+    print(
+        f"   j(k = 2 pi kfrac h^-T): |dE/dh - (6.)| {(gbuilt - glat).abs().max():.2e}"
+    )
 
     # 8. the chosen semantics: Cartesian input converted to fractional from
     # values (construction data, no gradient), phases exp(2 pi i kfrac.n).
@@ -262,8 +288,10 @@ def main():
     for label, kc in (("constant", fixed), ("built from h", built)):
         lat = LATTICE.clone().requires_grad_(True)
         (gconv,) = torch.autograd.grad(energy_conv(POSITIONS, lat, kc), (lat,))
-        print(f"8. Cartesian k {label}, converted: |dE/dh - (6.)| "
-              f"{(gconv - glat).abs().max():.2e}")
+        print(
+            f"8. Cartesian k {label}, converted: |dE/dh - (6.)| "
+            f"{(gconv - glat).abs().max():.2e}"
+        )
 
 
 if __name__ == "__main__":

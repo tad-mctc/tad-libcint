@@ -43,7 +43,10 @@ from tad_mctc.neighbor.images import build_periodic_shifts
 from tad_libcint import Basis, Shell, library
 from tad_libcint.names import IntegralName
 
-DXTB = Path(os.environ.get("DXTB_SRC", Path.home() / "Dokumente/dev/dxtb/src")) / "dxtb/_src"
+DXTB = (
+    Path(os.environ.get("DXTB_SRC", Path.home() / "Dokumente/dev/dxtb/src"))
+    / "dxtb/_src"
+)
 dd = {"dtype": torch.float64}
 
 PRECISIONS = [1e-6, 1e-8, 1e-10, 1e-12, 1e-14]
@@ -64,7 +67,9 @@ def slater_to_gauss(ng, n, l, zeta):
     coeff, alpha = STO_NG[ng - 1][:, itype, :]
     alpha = alpha * zeta**2
     coeff = (
-        coeff * (2 / math.pi * alpha) ** 0.75 * np.sqrt(4 * alpha) ** l
+        coeff
+        * (2 / math.pi * alpha) ** 0.75
+        * np.sqrt(4 * alpha) ** l
         / math.sqrt(DFACTORIAL[l])
     )
     return alpha, coeff
@@ -74,8 +79,15 @@ def gfn2_basis(numbers):
     with open(DXTB / "param/gfn2/gfn2-xtb.toml", "rb") as f:
         param = tomllib.load(f)
     symbols = {
-        1: "H", 3: "Li", 6: "C", 8: "O", 9: "F", 11: "Na", 12: "Mg",
-        14: "Si", 17: "Cl",
+        1: "H",
+        3: "Li",
+        6: "C",
+        8: "O",
+        9: "F",
+        11: "Na",
+        12: "Mg",
+        14: "Si",
+        17: "Cl",
     }
     shells = {}
     for z in sorted(set(numbers)):
@@ -94,6 +106,7 @@ def gfn2_basis(numbers):
 
 
 # Cells (bohr), lattice vectors as rows
+
 
 def fcc(a):
     return 0.5 * a * torch.tensor([[0, 1, 1], [1, 0, 1], [1, 1, 0]], **dd)
@@ -115,9 +128,12 @@ def systems():
     c = 4.83  # polyethylene, zigzag CH2 chain along x
     lat = torch.tensor([[c, 0, 0], [0, 20, 0], [0, 0, 20]], **dd)
     pos = [
-        [0, 0, 0], [c / 2, 1.62, 0],
-        [0, -1.2, 1.67], [0, -1.2, -1.67],
-        [c / 2, 2.82, 1.67], [c / 2, 2.82, -1.67],
+        [0, 0, 0],
+        [c / 2, 1.62, 0],
+        [0, -1.2, 1.67],
+        [0, -1.2, -1.67],
+        [c / 2, 2.82, 1.67],
+        [c / 2, 2.82, -1.67],
     ]
     yield "polyethylene (1D)", [6, 6, 1, 1, 1, 1], lat, pos, (1, 0, 0)
 
@@ -134,6 +150,7 @@ def systems():
 
 # Cutoff estimators: keep (i, j, T) if dist <= cutoff(i, j)
 
+
 def pyscf_rcut(alpha, l, c, precision):
     theta = alpha * 0.5
     a1 = (alpha * 2) ** -0.5
@@ -141,13 +158,19 @@ def pyscf_rcut(alpha, l, c, precision):
     fac = 2 * np.pi * c**2 * norm_ang / theta / precision
     fac *= 4 * alpha**2
     r0 = 20
-    r0 = (np.log(fac * r0 * (r0 * 0.5 + a1) ** (2 * l + 2) + 1.0) / theta) ** 0.5
-    r0 = (np.log(fac * r0 * (r0 * 0.5 + a1) ** (2 * l + 2) + 1.0) / theta) ** 0.5
+    r0 = (
+        np.log(fac * r0 * (r0 * 0.5 + a1) ** (2 * l + 2) + 1.0) / theta
+    ) ** 0.5
+    r0 = (
+        np.log(fac * r0 * (r0 * 0.5 + a1) ** (2 * l + 2) + 1.0) / theta
+    ) ** 0.5
     return r0
 
 
 def estimators(basis, numbers, lattice_measure):
-    amin = {z: min(float(s.alphas.min()) for s in basis.shells[z]) for z in numbers}
+    amin = {
+        z: min(float(s.alphas.min()) for s in basis.shells[z]) for z in numbers
+    }
     a = np.array([amin[z] for z in numbers])
 
     def gauss(p):
@@ -156,13 +179,18 @@ def estimators(basis, numbers, lattice_measure):
 
     def pyscf(p):
         r = max(
-            pyscf_rcut(s.alphas.numpy(), s.angmom, np.abs(s.coeffs.numpy()), p).max()
-            for z in numbers for s in basis.shells[z]
+            pyscf_rcut(
+                s.alphas.numpy(), s.angmom, np.abs(s.coeffs.numpy()), p
+            ).max()
+            for z in numbers
+            for s in basis.shells[z]
         )
         return np.full((len(a), len(a)), r)
 
     def tblite(p):
-        return np.full((len(a), len(a)), min(math.sqrt(2 * -math.log(p) / a.min()), 40.0))
+        return np.full(
+            (len(a), len(a)), min(math.sqrt(2 * -math.log(p) / a.min()), 40.0)
+        )
 
     out = {"gauss": gauss, "pyscf": pyscf, "tblite": tblite}
     for rank in (0, 2):
@@ -210,14 +238,20 @@ def pair_bound(basis, numbers, measure, p, rank):
                             mu = a * b / (a + b)
                             w = 1 / math.sqrt(2 * (a + b))
                             bound = (
-                                abs(ca * cb) * fac * (math.pi / (a + b)) ** 1.5
+                                abs(ca * cb)
+                                * fac
+                                * (math.pi / (a + b)) ** 1.5
                                 * (b * GRID / (a + b) + w) ** la
                                 * (a * GRID / (a + b) + w) ** (lb + rank)
                                 * np.exp(-mu * GRID**2)
                             )
                             # images within one decay length of the shell at R
                             dr = 1 / (2 * mu * np.maximum(GRID, 1e-3))
-                            shell = {3: 4 * math.pi * GRID**2, 2: 2 * math.pi * GRID, 1: 2.0}[dim]
+                            shell = {
+                                3: 4 * math.pi * GRID**2,
+                                2: 2 * math.pi * GRID,
+                                1: 2.0,
+                            }[dim]
                             count = np.maximum(1.0, shell * dr / measure_)
                             worst = np.maximum(worst, bound * count)
             above = np.nonzero(worst > p / SAFETY)[0]
@@ -226,6 +260,7 @@ def pair_bound(basis, numbers, measure, p, rank):
 
 
 # Reference blocks
+
 
 def image_blocks(name, basis, numbers, positions, shifts, lattice):
     """
@@ -255,8 +290,10 @@ def image_blocks(name, basis, numbers, positions, shifts, lattice):
 
 
 def main():
-    print(f"{'system':18s} {'p':>7s} {'estimator':>9s} {'kept':>7s} "
-          + " ".join(f"{'err ' + n:>10s}" for n in INTEGRALS))
+    print(
+        f"{'system':18s} {'p':>7s} {'estimator':>9s} {'kept':>7s} "
+        + " ".join(f"{'err ' + n:>10s}" for n in INTEGRALS)
+    )
     for label, numbers, lattice, pos, periodic in systems():
         positions = torch.tensor(pos, **dd)
         mask = torch.tensor([bool(x) for x in periodic])
@@ -291,11 +328,17 @@ def main():
 
         # distance of every (i, j, T)
         trans = shifts.to(torch.float64) @ lattice
-        vec = positions[None, None] + trans[:, None, None] - positions[None, :, None]
+        vec = (
+            positions[None, None]
+            + trans[:, None, None]
+            - positions[None, :, None]
+        )
         dist = vec.norm(dim=-1).permute(1, 2, 0).numpy()  # (i, j, T)
         ref_keep = dist <= est["gauss"](math.exp(-REFERENCE))[..., None]
-        print(f"{label}: {len(shifts)} images, {ref_keep.sum()} reference "
-              f"blocks, nao {len(ao_atom)}, {t:.1f} s")
+        print(
+            f"{label}: {len(shifts)} images, {ref_keep.sum()} reference "
+            f"blocks, nao {len(ao_atom)}, {t:.1f} s"
+        )
 
         for p in PRECISIONS:
             for ename, cutoff in est.items():
@@ -309,8 +352,11 @@ def main():
                     errs.append((b * drop_ao[None]).sum(-1).max())
                 share = (keep & ref_keep).sum() / ref_keep.sum()
                 flag = " " if max(errs) <= p else "!"
-                print(f"{'':18s} {p:7.0e} {ename:>9s} {share:7.1%} "
-                      + " ".join(f"{e:10.1e}" for e in errs) + f" {flag}")
+                print(
+                    f"{'':18s} {p:7.0e} {ename:>9s} {share:7.1%} "
+                    + " ".join(f"{e:10.1e}" for e in errs)
+                    + f" {flag}"
+                )
 
 
 if __name__ == "__main__":
