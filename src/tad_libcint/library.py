@@ -119,6 +119,42 @@ def _ptr(array: np.ndarray) -> ctypes.c_void_p:
     return array.ctypes.data_as(ctypes.c_void_p)
 
 
+def _system(
+    atm: np.ndarray, bas: np.ndarray, env: np.ndarray, ao_loc: np.ndarray
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """The arrays of libcint's system in its memory layout and types"""
+    return (
+        np.ascontiguousarray(atm, dtype=np.int32),
+        np.ascontiguousarray(bas, dtype=np.int32),
+        np.ascontiguousarray(env, dtype=np.float64),
+        np.ascontiguousarray(ao_loc, dtype=np.int32),
+    )
+
+
+def _block_nao(
+    ao_loc: np.ndarray, shls_slice: tuple[int, int, int, int]
+) -> tuple[int, int]:
+    """Number of AOs of the bra and of the ket shells of a block"""
+    ish0, ish1, jsh0, jsh1 = shls_slice
+    return int(ao_loc[ish1] - ao_loc[ish0]), int(ao_loc[jsh1] - ao_loc[jsh0])
+
+
+def _component_map(
+    comp_shape: tuple[int, ...], components: Sequence[int] | None
+) -> tuple[np.ndarray | None, tuple[int, ...]]:
+    """
+    The flat indices of the components to keep for libcint (``None`` for
+    all), and the shape of the kept components
+    """
+    if components is None:
+        return None, comp_shape
+    ncomp = math.prod(comp_shape)
+    comp_map = np.asarray(components, dtype=np.int32)
+    if ((comp_map < 0) | (comp_map >= ncomp)).any():
+        raise ValueError(f"Components {components} out of {ncomp}.")
+    return comp_map, (len(comp_map),)
+
+
 def int2c(
     symbol: str,
     comp_shape: tuple[int, ...],
@@ -170,23 +206,12 @@ def int2c(
         Integral of shape ``(*comp_shape, nao_bra, nao_ket)``, or
         ``(len(components), nao_bra, nao_ket)``.
     """
-    atm = np.ascontiguousarray(atm, dtype=np.int32)
-    bas = np.ascontiguousarray(bas, dtype=np.int32)
-    env = np.ascontiguousarray(env, dtype=np.float64)
-    ao_loc = np.ascontiguousarray(ao_loc, dtype=np.int32)
+    atm, bas, env, ao_loc = _system(atm, bas, env, ao_loc)
 
     nat, nsh = len(atm), len(bas)
-    ish0, ish1, jsh0, jsh1 = shls_slice
-    nao_bra = int(ao_loc[ish1] - ao_loc[ish0])
-    nao_ket = int(ao_loc[jsh1] - ao_loc[jsh0])
-    ncomp = int(np.prod(comp_shape))
-    if components is None:
-        comp_map, out_shape = None, comp_shape
-    else:
-        comp_map = np.asarray(components, dtype=np.int32)
-        out_shape = (len(comp_map),)
-        if ((comp_map < 0) | (comp_map >= ncomp)).any():
-            raise ValueError(f"Components {components} out of {ncomp}.")
+    nao_bra, nao_ket = _block_nao(ao_loc, shls_slice)
+    ncomp = math.prod(comp_shape)
+    comp_map, out_shape = _component_map(comp_shape, components)
 
     # libcint fills each component in column-major order
     shape = (math.prod(out_shape), nao_ket, nao_bra)
@@ -276,10 +301,7 @@ def int2c_lattice(
         Sums of shape ``(nw, *comp_shape, nao_bra, nao_ket)``, or
         ``(nw, len(components), nao_bra, nao_ket)``.
     """
-    atm = np.ascontiguousarray(atm, dtype=np.int32)
-    bas = np.ascontiguousarray(bas, dtype=np.int32)
-    env = np.ascontiguousarray(env, dtype=np.float64)
-    ao_loc = np.ascontiguousarray(ao_loc, dtype=np.int32)
+    atm, bas, env, ao_loc = _system(atm, bas, env, ao_loc)
     translations = np.ascontiguousarray(translations, dtype=np.float64)
     weights = np.ascontiguousarray(weights, dtype=np.float64)
 
@@ -290,17 +312,9 @@ def int2c_lattice(
             f"Expected translations of shape ({nimg}, 3), got "
             f"{translations.shape}."
         )
-    ish0, ish1, jsh0, jsh1 = shls_slice
-    nao_bra = int(ao_loc[ish1] - ao_loc[ish0])
-    nao_ket = int(ao_loc[jsh1] - ao_loc[jsh0])
-    ncomp = int(np.prod(comp_shape))
-    if components is None:
-        comp_map, out_shape = None, comp_shape
-    else:
-        comp_map = np.asarray(components, dtype=np.int32)
-        out_shape = (len(comp_map),)
-        if ((comp_map < 0) | (comp_map >= ncomp)).any():
-            raise ValueError(f"Components {components} out of {ncomp}.")
+    nao_bra, nao_ket = _block_nao(ao_loc, shls_slice)
+    ncomp = math.prod(comp_shape)
+    comp_map, out_shape = _component_map(comp_shape, components)
 
     # the images of each shell pair: consecutive terms of the same pair
     pairs = np.ascontiguousarray(pairs, dtype=np.int32)
@@ -338,3 +352,4 @@ def int2c_lattice(
         len(env),
     )
     return out.swapaxes(-1, -2).reshape(nw, *out_shape, nao_bra, nao_ket)
+

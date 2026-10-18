@@ -41,32 +41,21 @@ from torch.func import jacfwd, jacrev, vmap
 from tad_libcint import Basis, int1e, library, overlap
 from tad_libcint.names import IntegralName
 
-from .data import DTYPE, ShellSpec, element_shells, make_shells
+from .data import (
+    DTYPE,
+    KCART,
+    KFRAC,
+    LATTICE,
+    OH_CELL,
+    WATER_CELL,
+    ShellSpec,
+    element_shells,
+    make_shells,
+    pyscf_ao_index,
+    pyscf_shells,
+)
 
 dd: dict[str, Any] = {"dtype": DTYPE}
-
-LATTICE = torch.tensor(
-    [[6.5, 0.0, 0.0], [0.8, 6.2, 0.0], [0.4, -0.6, 6.8]], **dd
-)
-
-WATER_CELL = Structure(
-    numbers=torch.tensor([8, 1, 1]),
-    positions=torch.tensor(
-        [[0.1, 0.2, 0.3], [0.1, 1.6, -0.8], [0.2, -1.3, -0.7]], **dd
-    ),
-    lattice=LATTICE,
-)
-"""Water in a triclinic cell, one hydrogen outside the cell"""
-
-OH_CELL = Structure(
-    numbers=torch.tensor([8, 1]),
-    positions=torch.tensor([[0.0, 0.0, 0.0], [0.4, 1.7, 0.5]], **dd),
-    lattice=0.9 * LATTICE.flip(0),
-)
-"""Hydroxyl in another cell (for batches)"""
-
-KFRAC = torch.tensor([[0.25, 0.0, 0.5], [0.5, -0.25, 0.125]], **dd)
-"""Fractional k-points"""
 
 
 def _with_periodic(structure: Structure, periodic: list[bool]) -> Structure:
@@ -135,6 +124,20 @@ def _name(name: str, packed: bool) -> IntegralName:
     return IntegralName(iname.op, packed=True) if packed else iname
 
 
+def _as_real(out: torch.Tensor) -> torch.Tensor:
+    """Real and imaginary part of complex integrals (k-points)"""
+    return torch.view_as_real(out) if out.is_complex() else out
+
+
+def _mesh_kpoints() -> list[KPoints]:
+    """k-point meshes of :data:`WATER_CELL` and :data:`OH_CELL`"""
+    assert WATER_CELL.lattice is not None and OH_CELL.lattice is not None
+    return [
+        make_kpoints(WATER_CELL.lattice, (2, 1, 1)),
+        make_kpoints(OH_CELL.lattice, (1, 2, 2)),
+    ]
+
+
 # values
 
 
@@ -153,9 +156,8 @@ def test_reference(
     name: str, packed: bool, kpoints: bool, basis: Basis
 ) -> None:
     """Lattice sums equal the ghost supercell, at Γ and at k-points."""
-    assert WATER_CELL.lattice is not None
     kfrac = KFRAC if kpoints else None
-    kcart = None if kfrac is None else to_cartesian(kfrac, WATER_CELL.lattice)
+    kcart = KCART if kpoints else None
     out = int1e(
         name, basis, WATER_CELL, packed=packed, kpoints=kcart, precision=1e-14
     )
@@ -229,25 +231,10 @@ def test_pyscf(dimension: int, spherical: bool) -> None:
         verbose=0,
     )
 
-    # PySCF's normalized coefficients, per element
-    shells: dict[int, list[ShellSpec]] = {}
-    for ish in range(mol.nbas):
-        z = cell.numbers.tolist()[mol.bas_atom(ish)]
-        # pylint: disable-next=protected-access
-        coeffs = mol._libcint_ctr_coeff(ish)[:, 0].tolist()
-        spec = (int(mol.bas_angular(ish)), mol.bas_exp(ish).tolist(), coeffs)
-        if mol.bas_atom(ish) == int((cell.numbers == z).nonzero()[0]):
-            shells.setdefault(z, []).append(spec)
+    shells = pyscf_shells(mol, cell.numbers.tolist())
     basis = Basis(shells=make_shells(shells), spherical=spherical)
-
-    # PySCF orders spherical p functions as (px, py, pz)
     layout = basis.layout(cell.numbers)
-    index = torch.arange(layout.nao)
-    if spherical:
-        for ish in range(layout.nsh):
-            if layout.shell_angmom[ish] == 1:
-                first = int(layout.ao_loc[ish])
-                index[first : first + 3] = first + torch.tensor([1, 2, 0])
+    index = pyscf_ao_index(layout) if spherical else torch.arange(layout.nao)
 
     kfrac = KFRAC * torch.tensor(periodic, **dd)
     kcart = to_cartesian(kfrac, cell.lattice)
@@ -265,15 +252,9 @@ def test_pyscf(dimension: int, spherical: bool) -> None:
 
 def test_symmetry(basis: Basis) -> None:
     """The overlap is symmetric at Γ and hermitian at every k-point."""
-    assert WATER_CELL.lattice is not None
     s = overlap(basis, WATER_CELL)
     assert torch.allclose(s, s.mT, atol=1e-14)
-    sk = int1e(
-        "ovlp",
-        basis,
-        WATER_CELL,
-        kpoints=to_cartesian(KFRAC, WATER_CELL.lattice),
-    )
+    sk = int1e("ovlp", basis, WATER_CELL, kpoints=KCART)
     assert torch.allclose(sk, sk.mT.conj(), atol=1e-14)
     j = int1e("j", basis, WATER_CELL)
     assert not torch.allclose(j, j.mT, atol=1e-3)
@@ -285,13 +266,12 @@ def test_wrapped_atom(basis: Basis) -> None:
     k-points multiplies its rows and columns by the Bloch phases,
     A'(k) = exp(i k (L_mu - L_nu)) A(k).
     """
-    assert WATER_CELL.lattice is not None
     move = LATTICE[0] - 2 * LATTICE[2]
     positions = WATER_CELL.positions.clone()
     positions[1] += move
     moved = WATER_CELL.replace(positions=positions)
 
-    kcart = to_cartesian(KFRAC, WATER_CELL.lattice)
+    kcart = KCART
     ao_atom = basis.layout(WATER_CELL.numbers).ao_to_atom
     phase = torch.exp(1j * (kcart @ move))[:, None] ** (ao_atom == 1)[None, :]
     for name in ("ovlp", "j", "jj"):
@@ -308,16 +288,15 @@ def test_wrapped_atom(basis: Basis) -> None:
 
 def test_padding_kpoints(basis: Basis) -> None:
     """Padding k-points (masked) give zeros, the others their values."""
-    assert WATER_CELL.lattice is not None
-    kcart = to_cartesian(KFRAC, WATER_CELL.lattice)
-    packed = pack_kpoints([KPoints(points=kcart[:1]), KPoints(points=kcart)])
+    packed = pack_kpoints([KPoints(points=KCART[:1]), KPoints(points=KCART)])
     assert packed.weights is not None and packed.mask is not None
-    first = [
-        x.select(0, 0) for x in (packed.points, packed.weights, packed.mask)
-    ]
-    single = KPoints(points=first[0], weights=first[1], mask=first[2])
+    single = KPoints(
+        points=packed.points.select(0, 0),
+        weights=packed.weights.select(0, 0),
+        mask=packed.mask.select(0, 0),
+    )
     out = int1e("j", basis, WATER_CELL, kpoints=single)
-    ref = int1e("j", basis, WATER_CELL, kpoints=kcart[:1])
+    ref = int1e("j", basis, WATER_CELL, kpoints=KCART[:1])
     assert torch.equal(out[1], torch.zeros_like(out[1]))
     assert torch.allclose(out[:1], ref, atol=1e-14)
 
@@ -355,21 +334,17 @@ def test_precision(precision: float) -> None:
 # gradients
 
 
-def _cell_inputs(structure: Structure, basis: Basis) -> dict[str, torch.Tensor]:
+def _cell_func(
+    name: str, basis: Basis, structure: Structure, kpoints: bool, wrt: str
+) -> Any:
+    """The integral (real and imaginary part) as a function of one input"""
     assert structure.lattice is not None
-    return {
+    params = {
         "positions": structure.positions.clone(),
         "lattice": structure.lattice.clone(),
         "alphas": basis.alphas.detach().clone(),
         "coeffs": basis.coeffs.detach().clone(),
     }
-
-
-def _cell_func(
-    name: str, basis: Basis, structure: Structure, kpoints: bool, wrt: str
-) -> Any:
-    """The integral (real and imaginary part) as a function of one input"""
-    params = _cell_inputs(structure, basis)
 
     def func(x: torch.Tensor) -> torch.Tensor:
         p = {**params, wrt: x}
@@ -384,7 +359,7 @@ def _cell_func(
             coeffs=p["coeffs"],
             kpoints=kcart,
         )
-        return torch.view_as_real(out) if out.is_complex() else out
+        return _as_real(out)
 
     return func, params[wrt]
 
@@ -424,15 +399,13 @@ def test_vacuum_gradient(basis: Basis) -> None:
 @pytest.mark.parametrize("kpoints", [False, True], ids=["gamma", "k"])
 def test_jacobians(kpoints: bool, basis: Basis) -> None:
     """jacrev and jacfwd agree, also for the Hessian of a scalar."""
-    assert WATER_CELL.lattice is not None
-    kcart = to_cartesian(KFRAC, WATER_CELL.lattice) if kpoints else None
+    kcart = KCART if kpoints else None
 
     def func(positions: torch.Tensor, lattice: torch.Tensor) -> torch.Tensor:
         cell = WATER_CELL.replace(positions=positions, lattice=lattice)
-        out = int1e("j", basis, cell, kpoints=kcart)
-        return torch.view_as_real(out) if out.is_complex() else out
+        return _as_real(int1e("j", basis, cell, kpoints=kcart))
 
-    args = (WATER_CELL.positions, WATER_CELL.lattice)
+    args = (WATER_CELL.positions, LATTICE)
     for argnums in (0, 1):
         rev = jacrev(func, argnums=argnums)(*args)
         fwd = jacfwd(func, argnums=argnums)(*args)
@@ -442,9 +415,9 @@ def test_jacobians(kpoints: bool, basis: Basis) -> None:
     def energy(lattice: torch.Tensor) -> torch.Tensor:
         return func(WATER_CELL.positions, lattice).pow(2).sum()
 
-    hessian = jacrev(torch.func.grad(energy))(WATER_CELL.lattice)
+    hessian = jacrev(torch.func.grad(energy))(LATTICE)
     assert torch.allclose(
-        hessian, jacfwd(torch.func.grad(energy))(WATER_CELL.lattice), atol=1e-10
+        hessian, jacfwd(torch.func.grad(energy))(LATTICE), atol=1e-10
     )
     assert torch.allclose(
         hessian, hessian.reshape(9, 9).mT.reshape(3, 3, 3, 3), atol=1e-10
@@ -456,12 +429,8 @@ def test_jacobians(kpoints: bool, basis: Basis) -> None:
 
 def test_batch(basis: Basis) -> None:
     """A padded batch of different cells and k-point sets equals each one."""
-    assert WATER_CELL.lattice is not None and OH_CELL.lattice is not None
     batch = pack_structures([WATER_CELL, OH_CELL])
-    kpoints = [
-        make_kpoints(WATER_CELL.lattice, (2, 1, 1)),
-        make_kpoints(OH_CELL.lattice, (1, 2, 2)),
-    ]
+    kpoints = _mesh_kpoints()
     out = int1e("j", basis, batch, kpoints=pack_kpoints(kpoints))
     for b, (cell, kpts) in enumerate(zip([WATER_CELL, OH_CELL], kpoints)):
         ref = int1e("j", basis, cell, kpoints=kpts)
@@ -501,7 +470,6 @@ def test_vmap_jacobian(basis: Basis) -> None:
 def test_errors(basis: Basis) -> None:
     """Origin- and nucleus-dependent operators, misplaced k-points and
     precisions are refused."""
-    assert WATER_CELL.lattice is not None
     for name in ("r0", "r0r0", "nuc", "ipnuc"):
         with pytest.raises(ValueError, match="no periodic integral"):
             int1e(name, basis, WATER_CELL)
@@ -546,8 +514,7 @@ def test_gradgrad_mixed(kpoints: bool) -> None:
     def func(positions: torch.Tensor, lattice: torch.Tensor) -> torch.Tensor:
         cell = OH_CELL.replace(positions=positions, lattice=lattice)
         kcart = to_cartesian(KFRAC, lattice) if kpoints else None
-        out = int1e("j", basis, cell, kpoints=kcart)
-        return torch.view_as_real(out) if out.is_complex() else out
+        return _as_real(int1e("j", basis, cell, kpoints=kcart))
 
     assert OH_CELL.lattice is not None
     args = (
@@ -559,14 +526,8 @@ def test_gradgrad_mixed(kpoints: bool) -> None:
 
 def test_vmap_structures(basis: Basis) -> None:
     """`vmap` over a batched cell and k-point set equals the batch."""
-    assert WATER_CELL.lattice is not None and OH_CELL.lattice is not None
     batch = pack_structures([WATER_CELL, OH_CELL])
-    kpoints = pack_kpoints(
-        [
-            make_kpoints(WATER_CELL.lattice, (2, 1, 1)),
-            make_kpoints(OH_CELL.lattice, (1, 2, 2)),
-        ]
-    )
+    kpoints = pack_kpoints(_mesh_kpoints())
 
     def func(structure: Structure, kpts: KPoints) -> torch.Tensor:
         return int1e("j", basis, structure, kpoints=kpts)

@@ -34,14 +34,12 @@ from collections.abc import Callable
 import pytest
 import torch
 from tad_mctc.io.structure import Structure
-from tad_mctc.kpoints import to_cartesian
 from tad_mctc.tools.compile import is_compile_supported
 from tad_mctc.tools.testing import COMPILE_UNSUPPORTED_REASON
 
 from tad_libcint import Basis, int1e
 
-from .data import WATER, element_shells
-from .test_periodic import KFRAC, WATER_CELL
+from .data import KCART, WATER, WATER_CELL, element_shells
 
 pytestmark = pytest.mark.skipif(
     not is_compile_supported(), reason=COMPILE_UNSUPPORTED_REASON
@@ -56,10 +54,7 @@ def _energy(
     """A scalar function of the positions of a molecule or a cell"""
     basis = Basis(shells=element_shells())
     structure = WATER if case == "molecule" else WATER_CELL
-    kpoints = None
-    if case == "cell-k":
-        assert WATER_CELL.lattice is not None
-        kpoints = to_cartesian(KFRAC, WATER_CELL.lattice)
+    kpoints = KCART if case == "cell-k" else None
 
     def energy(positions: torch.Tensor) -> torch.Tensor:
         cell = structure.replace(positions=positions)

@@ -30,8 +30,7 @@ from torch.func import jacrev
 
 from tad_libcint import Basis, int1e, integrals
 
-from .data import DIMER, METHANE, WATER, element_shells
-from .test_periodic import KFRAC, WATER_CELL
+from .data import DIMER, KFRAC, METHANE, WATER, WATER_CELL, element_shells
 
 pytestmark = pytest.mark.skipif(
     not torch.cuda.is_available(), reason="CUDA is not available"

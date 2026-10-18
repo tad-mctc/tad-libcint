@@ -137,7 +137,7 @@ from tad_mctc.neighbor import pairs_within_radii, periodic_pairs_within_radii
 from torch import Tensor
 
 from . import library
-from .basis import Basis, Layout
+from .basis import Basis, Layout, _to_numpy
 from .names import (
     DERIVATIVE_OPERATORS,
     QUADRUPOLE_OPERATORS,
@@ -507,7 +507,7 @@ class _Images(NamedTuple):
 
     def translations(self, lattice: Tensor) -> np.ndarray:
         """Cartesian translations of the images, shape ``(nimg, 3)``"""
-        return self.shifts @ lattice.detach().cpu().to(torch.float64).numpy()
+        return self.shifts @ _to_numpy(lattice)
 
 
 
@@ -730,16 +730,12 @@ def _pair_cutoff(
 def _cell_measure(
     lattice: np.ndarray, periodic: np.ndarray
 ) -> tuple[float, int]:
-    """Volume, area or length of the periodic axes, and their number"""
+    """
+    Volume, area or length of the periodic axes (1 for none), and their
+    number: the square root of the Gram determinant
+    """
     axes = lattice[periodic]
-    dim = len(axes)
-    if dim == 3:
-        return abs(float(np.linalg.det(lattice))), dim
-    if dim == 2:
-        return float(np.linalg.norm(np.cross(axes[0], axes[1]))), dim
-    if dim == 1:
-        return float(np.linalg.norm(axes[0])), dim
-    return 1.0, dim
+    return float(np.sqrt(np.linalg.det(axes @ axes.T))), len(axes)
 
 
 def _element_cutoffs(
@@ -756,8 +752,7 @@ def _element_cutoffs(
     `elements`, shape ``(nelem, nelem)``
     """
     shells = dict(basis.element_shells)
-    alphas = inputs.alphas.detach().cpu().to(torch.float64).numpy()
-    coeffs = inputs.coeffs.detach().cpu().to(torch.float64).numpy()
+    alphas, coeffs = _to_numpy(inputs.alphas), _to_numpy(inputs.coeffs)
     threshold = precision / _PRECISION_MARGIN
 
     def params(
@@ -854,7 +849,7 @@ def _image_weights(inputs: Inputs, shifts: np.ndarray) -> np.ndarray:
     """
     assert inputs.kpoints is not None and inputs.kmask is not None
     assert inputs.periodic is not None
-    kpoints = inputs.kpoints.detach().cpu().to(torch.float64).numpy()
+    kpoints = _to_numpy(inputs.kpoints)
     kmask = inputs.kmask.cpu().numpy()
     if len(kpoints) == 0:
         return np.ones((1, len(shifts)))
@@ -979,7 +974,7 @@ class _StructureIntegral:
         self.name = name
         self.basis = basis
         self.precision = precision
-        self._screening: tuple[list[Tensor], Any] | None = None
+        self._screening: tuple[list[Tensor], _Block] | None = None
 
     def __call__(
         self, *tensors: Tensor, values: bool = True
@@ -1014,7 +1009,7 @@ class _StructureIntegral:
 
         if self._screening is not None:
             last, block = self._screening
-            if len(last) == len(structure) and all(
+            if all(
                 a.shape == b.shape and torch.equal(a, b)
                 for a, b in zip(last, structure)
             ):
@@ -1195,8 +1190,8 @@ class _JacobianVectorProduct:
         ]
         # charges, periodic axes and k-points are not differentiable
         needed = [v if need else None for v, need in zip(batch, self.needs)]
-        positions, alphas, coeffs = needed[1:4]
-        lattice = needed[4] if len(needed) > 4 else None
+        # in the order of `Inputs` (no lattice for a molecule)
+        _, positions, alphas, coeffs, lattice, *_ = [*needed, None]
         if inputs.lattice is not None and positions is not None:
             positions = torch.cat([positions, positions], dim=1)  # ket copies
 
@@ -2084,7 +2079,7 @@ def _derivative(
     return result.movedim(len(block.lead) + axis, 0)
 
 
-def _transpose(integral: Tensor, name: IntegralName, nlead: int = 0) -> Tensor:
+def _transpose(integral: Tensor, name: IntegralName, nlead: int) -> Tensor:
     """
     Turn the integral `name` into the integral ``name.transposed()``, with
     `nlead` leading axes (the sums of a block's images) kept in front
