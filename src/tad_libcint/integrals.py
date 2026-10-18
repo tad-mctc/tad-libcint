@@ -1597,8 +1597,9 @@ def _lattice_axes(block: _Block) -> tuple[list[int], _Block]:
     assert block.images is not None
     shifts, weights = block.images
     axes = [a for a in range(3) if shifts[:, a].any()]
-    stacked = np.concatenate([weights * shifts[:, a] for a in axes])
-    images = block.images._replace(weights=stacked)
+    # (naxes, nw, nimg), also for no axes
+    stacked = shifts.T[axes, None, :] * weights
+    images = block.images._replace(weights=stacked.reshape(-1, len(shifts)))
     return axes, block._replace(images=images)
 
 

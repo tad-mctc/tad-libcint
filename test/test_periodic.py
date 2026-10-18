@@ -385,6 +385,19 @@ def test_gradgrad(name: str, wrt: str) -> None:
     )
 
 
+def test_no_periodic_axes_lattice_derivatives(basis: Basis) -> None:
+    """Without periodic axes, nothing depends on the lattice."""
+    cell = WATER_CELL.replace(periodic=torch.tensor([False] * 3))
+    assert cell.lattice is not None
+
+    def func(lattice: torch.Tensor) -> torch.Tensor:
+        return int1e("jj", basis, cell.replace(lattice=lattice))
+
+    zeros = torch.zeros(*func(cell.lattice).shape, 3, 3, **dd)
+    assert torch.equal(jacrev(func)(cell.lattice), zeros)
+    assert torch.equal(jacfwd(func)(cell.lattice), zeros)
+
+
 def test_vacuum_gradient(basis: Basis) -> None:
     """A vacuum lattice vector has no gradient."""
     cell = _with_periodic(WATER_CELL, [True, False, True])

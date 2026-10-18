@@ -107,7 +107,7 @@ def test_vmap_nested(basis: Basis, conformers: Tensor) -> None:
 
 
 @JACOBIANS
-@pytest.mark.parametrize("name", ["ovlp", "j"])
+@pytest.mark.parametrize("name", ["ovlp", "j", "ipr0"])
 def test_jacobian(
     jac: Transform, name: str, basis: Basis, positions: Tensor
 ) -> None:
