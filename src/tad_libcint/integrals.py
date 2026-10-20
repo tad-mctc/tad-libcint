@@ -218,9 +218,12 @@ def int1e(
 
     at the Γ point (real) or at the given k-points (complex), with the
     translations :math:`\mathbf{T} = \mathbf{n} \mathbf{A}` along the
-    periodic axes. A ket-centred operator (``"j"``, ``"jj"``) is centred on
-    the ket's image. Derivatives w.r.t. the lattice are taken at fixed
-    fractional k-points (the k-points are not differentiable).
+    periodic axes only, however short the other lattice vectors (PySCF's
+    ``low_dim_ft_type="inf_vacuum"``). A ket-centred operator (``"j"``,
+    ``"jj"``) is centred on the ket's image. Derivatives w.r.t. the lattice
+    are taken at fixed fractional k-points, so that a strained cell is
+    sampled by the same grid (as in PySCF's stress); the k-points are not
+    differentiable.
 
     Parameters
     ----------
@@ -377,7 +380,11 @@ def _periodic(
     batch = numbers.shape[:-1]
 
     # The k-points are construction data: fractional coordinates from
-    # their values (fixed under strain), none at the Gamma point.
+    # their values (fixed under strain), none at the Gamma point. Converted
+    # from values, the lattice derivative is the same whether the k-points
+    # are constant or built from the (differentiable) lattice; phases from
+    # Cartesian k in torch would instead hold them fixed in Cartesian
+    # coordinates unless built inside the differentiated function.
     gamma = kpoints is None
     if isinstance(kpoints, KPoints):
         points, mask = kpoints.points, kpoints.mask
@@ -649,8 +656,25 @@ def _screened_pairs(layout: Layout, inputs: Inputs) -> np.ndarray:
 #
 # The images of a lattice sum are screened per pair of elements: beyond a
 # cutoff, every block and the images within one decay length of it add less
-# than the precision (see `_pair_cutoff`). The bound and its margin were
-# benchmarked on GFN2-xTB cells in 3D, 2D and 1D (`notes/periodic.md`).
+# than the precision (see `_pair_cutoff`). libcint's own threshold for
+# products of primitives (exp(-60)) stays as it is.
+#
+# Benchmarked with the GFN2-xTB basis on eight cells (diamond, Si, LiF,
+# graphene, polyethylene, and, after choosing the margin, NaCl, MgO, ice),
+# for "ovlp", "j" and "jj" against an exp(-60) reference:
+#
+# - The Gaussian product factor alone (the molecular screening) misses the
+#   coefficients, the polynomial prefactors, the moments and the number of
+#   images: errors up to 1e5 times the precision.
+# - A global cutoff from the smallest exponent with tblite's 40 Bohr cap
+#   leaves errors independent of the accuracy for diffuse shells (0.16 in
+#   the NaCl quadrupole).
+# - PySCF's `_estimate_rcut` is safe for overlaps, but not for moments in
+#   ionic cells (up to 900 times the precision).
+# - This bound with the operator's rank and a margin of 10 kept the errors
+#   below 0.1 times the precision in all eight cells, at the cost of PySCF's
+#   estimate or less. At the default of 1e-10, the errors stayed below
+#   1e-11; 1e-12 costs 10-25 % more blocks.
 
 
 _PRECISION_MARGIN = 10.0
