@@ -408,17 +408,26 @@ def test_zero_coeffs(zero: str) -> None:
 
 
 def test_all_padding(basis: Basis) -> None:
-    """A cell of padding atoms has an empty integral, as a molecule does,
-    and gives zeros in a batch."""
+    """
+    A cell of padding atoms has an empty integral, as a molecule does, with
+    zero derivatives, and gives zeros in a batch (also at k-points).
+    """
     positions = torch.zeros(2, 3, **dd, requires_grad=True)
+    lattice = LATTICE.clone().requires_grad_(True)
     cell = Structure(
-        numbers=torch.tensor([0, 0]), positions=positions, lattice=LATTICE
+        numbers=torch.tensor([0, 0]), positions=positions, lattice=lattice
     )
     molecule = Structure(numbers=cell.numbers, positions=positions)
     out = int1e("jj", basis, cell)
     assert out.shape == int1e("jj", basis, molecule).shape
-    (grad,) = torch.autograd.grad(out.sum(), positions, allow_unused=True)
-    assert grad is None or torch.equal(grad, torch.zeros_like(grad))
+    for kpoints in (None, KCART):
+        out = int1e("jj", basis, cell, kpoints=kpoints)
+        assert out.shape[-2:] == (0, 0)
+        grads = torch.autograd.grad(
+            out.real.sum(), (positions, lattice), allow_unused=True
+        )
+        for grad in grads:
+            assert grad is None or torch.equal(grad, torch.zeros_like(grad))
 
     empty = Structure(
         numbers=torch.tensor([0]),
@@ -426,9 +435,22 @@ def test_all_padding(basis: Basis) -> None:
         lattice=LATTICE,
     )
     batch = pack_structures([WATER_CELL, empty])
-    out = int1e("jj", basis, batch)
-    assert torch.allclose(out[0], int1e("jj", basis, WATER_CELL), atol=1e-14)
+    assert batch.lattice is not None
+    kpts = [KPoints(points=KCART), KPoints(points=KCART[:1])]
+
+    def func(lattice: torch.Tensor) -> torch.Tensor:
+        structure = batch.replace(lattice=lattice)
+        return _as_real(
+            int1e("jj", basis, structure, kpoints=pack_kpoints(kpts))
+        )
+
+    out = func(batch.lattice)
+    ref = _as_real(int1e("jj", basis, WATER_CELL, kpoints=KCART))
+    assert torch.allclose(out[0], ref, atol=1e-14)
     assert torch.equal(out[1], torch.zeros_like(out[1]))
+    jac = jacfwd(func)(batch.lattice)
+    assert torch.equal(jac[1], torch.zeros_like(jac[1]))
+    assert jac[0].abs().max() > 1e-3
 
 
 # gradients

@@ -687,7 +687,8 @@ def _screened_pairs(layout: Layout, inputs: Inputs) -> np.ndarray:
 # - This bound with the operator's rank and a margin of 10 kept the errors
 #   below 0.1 times the precision in all eight cells, at the cost of PySCF's
 #   estimate or less. At the default of 1e-10, the errors stayed below
-#   1e-11; 1e-12 costs 10-25 % more blocks.
+#   1e-11; 1e-12 costs 10-25 % more blocks. (Measured with the coefficients
+#   as given, before the bound of the derivatives above.)
 
 
 _PRECISION_MARGIN = 10.0
@@ -838,13 +839,13 @@ def _periodic_block(
     # cutoffs of each pair of elements, as bra and as ket
     elements = sorted(set(numbers.tolist()) - {0})
     if len(elements) == 0:
-        # padding only: no shells and no images
-        empty = np.zeros((0, 3), dtype=np.int64)
+        # padding only: no shells, and the image at the origin
+        origin = np.zeros((1, 3), dtype=np.int64)
         return _Block(
             range(0),
             range(0),
-            empty,
-            _Images(empty, _image_weights(inputs, empty)),
+            np.zeros((0, 3), dtype=np.int64),
+            _Images(origin, _image_weights(inputs, origin)),
         )
     cell = _cell_measure(lattice.numpy(), periodic.numpy())
     rank = _operator_rank(name)
