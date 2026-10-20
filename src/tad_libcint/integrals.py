@@ -664,6 +664,14 @@ def _screened_pairs(layout: Layout, inputs: Inputs) -> np.ndarray:
 # than the precision (see `_pair_cutoff`). libcint's own threshold for
 # products of primitives (exp(-60)) stays as it is.
 #
+# The integrals are bilinear in the coefficients: the derivatives of a block
+# w.r.t. them carry |c_b|, |c_a| or 1 instead of |c_a c_b|. The bound takes
+# max(1, |c|) for every coefficient, so that the derivatives are within the
+# precision as well, also for small or zero coefficients (whose images would
+# be screened otherwise). One block for the values and all derivatives keeps
+# them consistent. This costs 5-10 % more blocks at the default precision
+# (and up to 50 % at 1e-6) for the test bases with coefficients below one.
+#
 # Benchmarked with the GFN2-xTB basis on eight cells (diamond, Si, LiF,
 # graphene, polyethylene, and, after choosing the margin, NaCl, MgO, ice),
 # for "ovlp", "j" and "jj" against an exp(-60) reference:
@@ -693,6 +701,9 @@ _COMMON_FACTOR = {0: 0.282094791773878143, 1: 0.488602511902919921}
 
 _CUTOFF_STEP = 0.05
 """Resolution of the cutoffs in Bohr."""
+
+_CUTOFF_ELEMENTS = 2**16
+"""Number of bounds evaluated at once in the search of a cutoff (memory)."""
 
 
 def _operator_rank(name: IntegralName) -> int:
@@ -735,22 +746,29 @@ def _pair_cutoff(
         * (np.pi / p) ** 1.5
     )
 
-    # beyond the Gaussian's decay to the threshold (plus the polynomial)
+    width = 1.0 / np.sqrt(2.0 * p)
+
+    def worst(r: np.ndarray) -> np.ndarray:
+        """Largest bound of the primitive pairs at the distances `r`"""
+        bound = (
+            pref
+            * (b * r / p + width) ** la
+            * (a * r / p + width) ** (lb + rank)
+            * np.exp(-mu * r**2)
+        )
+        decay = 1.0 / (2.0 * mu * np.maximum(r, 1e-3))
+        shell = {3: 4.0 * np.pi * r**2, 2: 2.0 * np.pi * r, 1: 2.0}
+        count = np.maximum(1.0, shell.get(dim, 0.0) * decay / measure)
+        return (bound * count).max(axis=(0, 1))
+
+    # beyond the Gaussian's decay to the threshold (plus the polynomial), in
+    # chunks of distances: diffuse primitives need many
     rmax = np.sqrt((np.log(pref.max() / threshold) + 100.0) / mu.min())
     r = np.arange(0.0, rmax + _CUTOFF_STEP, _CUTOFF_STEP)
-    width = 1.0 / np.sqrt(2.0 * p)
-    bound = (
-        pref
-        * (b * r / p + width) ** la
-        * (a * r / p + width) ** (lb + rank)
-        * np.exp(-mu * r**2)
-    )
-    decay = 1.0 / (2.0 * mu * np.maximum(r, 1e-3))
-    shell = {3: 4.0 * np.pi * r**2, 2: 2.0 * np.pi * r, 1: 2.0}.get(dim, 0.0)
-    count = np.maximum(1.0, shell * decay / measure)
-    worst = (bound * count).max(axis=(0, 1))
+    chunk = max(1, _CUTOFF_ELEMENTS // pref.size)
+    bounds = [worst(r[k : k + chunk]) for k in range(0, len(r), chunk)]
 
-    above = np.flatnonzero(worst > threshold)
+    above = np.flatnonzero(np.concatenate(bounds) > threshold)
     return 0.0 if len(above) == 0 else float(r[min(above[-1] + 1, len(r) - 1)])
 
 
@@ -776,10 +794,12 @@ def _element_cutoffs(
 ) -> np.ndarray:
     """
     Cutoff of the blocks of a bra atom and a ket atom of each pair of
-    `elements`, shape ``(nelem, nelem)``
+    `elements` and of their derivatives w.r.t. the coefficients (see the
+    comment above), shape ``(nelem, nelem)``
     """
     shells = dict(basis.element_shells)
-    alphas, coeffs = _to_numpy(inputs.alphas), _to_numpy(inputs.coeffs)
+    alphas = _to_numpy(inputs.alphas)
+    coeffs = np.maximum(np.abs(_to_numpy(inputs.coeffs)), 1.0)
     threshold = precision / _PRECISION_MARGIN
 
     def params(
@@ -817,6 +837,15 @@ def _periodic_block(
 
     # cutoffs of each pair of elements, as bra and as ket
     elements = sorted(set(numbers.tolist()) - {0})
+    if len(elements) == 0:
+        # padding only: no shells and no images
+        empty = np.zeros((0, 3), dtype=np.int64)
+        return _Block(
+            range(0),
+            range(0),
+            empty,
+            _Images(empty, _image_weights(inputs, empty)),
+        )
     cell = _cell_measure(lattice.numpy(), periodic.numpy())
     rank = _operator_rank(name)
     cut = _element_cutoffs(
