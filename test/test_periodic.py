@@ -27,6 +27,7 @@ independent reference for overlaps.
 from __future__ import annotations
 
 import math
+import tracemalloc
 from typing import Any
 
 import numpy as np
@@ -39,6 +40,7 @@ from torch.autograd import gradcheck, gradgradcheck
 from torch.func import jacfwd, jacrev, vmap
 
 from tad_libcint import Basis, int1e, library, overlap
+from tad_libcint.integrals import _pair_cutoff
 from tad_libcint.names import IntegralName
 
 from .data import (
@@ -75,11 +77,15 @@ def _reference(
     basis: Basis,
     structure: Structure,
     kfrac: torch.Tensor | None = None,
+    coeffs: torch.Tensor | None = None,
 ) -> torch.Tensor:
     """
     Lattice sums from a ghost supercell: the central cell's rows against all
-    images within exp(-60) for the most diffuse primitives
+    images within exp(-60) for the most diffuse primitives (with the basis'
+    coefficients or `coeffs`)
     """
+    if coeffs is None:
+        coeffs = basis.coeffs
     lattice, periodic = structure.lattice, structure.periodic
     assert lattice is not None and periodic is not None
     numbers, positions = structure.numbers, structure.positions
@@ -108,7 +114,7 @@ def _reference(
         components=name.components,
         atm=layout.atm(charges),
         bas=layout.bas,
-        env=layout.env(charges, ext_positions, basis.alphas, basis.coeffs),
+        env=layout.env(charges, ext_positions, basis.alphas, coeffs),
         ao_loc=layout.ao_loc,
     )
     nao = out.shape[-2]
@@ -329,6 +335,122 @@ def test_precision(precision: float) -> None:
     loose = int1e("jj", basis, cell, precision=precision)
     tight = int1e("jj", basis, cell, precision=1e-14)
     assert (loose - tight).abs().max() > 0
+
+
+def test_diffuse_cutoff_memory() -> None:
+    """The cutoff scan of very diffuse primitives stays small in memory."""
+    alphas = np.geomspace(1e-6, 1e-3, 6)
+    coeffs = np.ones(6)
+    tracemalloc.start()
+    try:
+        cut = _pair_cutoff(
+            (alphas, coeffs, 1), (alphas, coeffs, 1), 2, 1e-11, (1000.0, 3)
+        )
+        _, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+    assert 1e3 < cut < 1e5
+    assert peak < 2**25
+
+
+# zero coefficients
+
+
+@pytest.mark.parametrize("zero", ["primitive", "shell", "all"])
+def test_zero_coeffs(zero: str) -> None:
+    """
+    Values and coefficient gradients with zero coefficients equal the
+    supercell's: a zero primitive or shell still screens the images of its
+    derivatives. The integral is quadratic in the coefficients, so central
+    differences are exact.
+    """
+    spec: dict[int, list[ShellSpec]] = {
+        1: [(0, [1.2, 0.05], [0.7, 0.3]), (1, [0.8], [1.0])],
+    }
+    basis = Basis(shells=make_shells(spec)).normalized()
+    cell = Structure(
+        numbers=torch.tensor([1, 1]),
+        positions=torch.tensor([[0.0, 0.0, 0.0], [0.0, 0.0, 1.4]], **dd),
+        lattice=torch.tensor(
+            [[9.0, 0.0, 0.0], [1.0, 9.5, 0.0], [0.0, 0.5, 10.0]], **dd
+        ),
+    )
+    zeros = {"primitive": [1], "shell": [2], "all": [0, 1, 2]}[zero]
+    coeffs = basis.coeffs.detach().clone()
+    coeffs[zeros] = 0.0
+    iname = _name("jj", packed=False)
+    weights = torch.linspace(-1.0, 1.0, _reference(iname, basis, cell).numel())
+
+    def reference(c: torch.Tensor) -> torch.Tensor:
+        ref = _reference(iname, basis, cell, coeffs=c)
+        return (weights * ref.flatten()).sum()
+
+    x = coeffs.clone().requires_grad_(True)
+    out = int1e("jj", basis, cell, packed=False, coeffs=x)
+    ref = _reference(iname, basis, cell, coeffs=coeffs)
+    assert (out - ref).abs().max() <= 1e-10
+    (grad,) = torch.autograd.grad((weights * out.flatten()).sum(), x)
+
+    h = 0.1
+    step = torch.eye(len(coeffs), **dd)
+    fd = torch.stack(
+        [
+            (reference(coeffs + h * e) - reference(coeffs - h * e)) / (2 * h)
+            for e in step
+        ]
+    )
+    assert torch.allclose(grad, fd, atol=1e-8)
+    if zero != "all":
+        assert grad[zeros].abs().max() > 1e-3
+
+
+# padding
+
+
+def test_all_padding(basis: Basis) -> None:
+    """
+    A cell of padding atoms has an empty integral, as a molecule does, with
+    zero derivatives, and gives zeros in a batch (also at k-points).
+    """
+    positions = torch.zeros(2, 3, **dd, requires_grad=True)
+    lattice = LATTICE.clone().requires_grad_(True)
+    cell = Structure(
+        numbers=torch.tensor([0, 0]), positions=positions, lattice=lattice
+    )
+    molecule = Structure(numbers=cell.numbers, positions=positions)
+    out = int1e("jj", basis, cell)
+    assert out.shape == int1e("jj", basis, molecule).shape
+    for kpoints in (None, KCART):
+        out = int1e("jj", basis, cell, kpoints=kpoints)
+        assert out.shape[-2:] == (0, 0)
+        grads = torch.autograd.grad(
+            out.real.sum(), (positions, lattice), allow_unused=True
+        )
+        for grad in grads:
+            assert grad is None or torch.equal(grad, torch.zeros_like(grad))
+
+    empty = Structure(
+        numbers=torch.tensor([0]),
+        positions=torch.zeros(1, 3, **dd),
+        lattice=LATTICE,
+    )
+    batch = pack_structures([WATER_CELL, empty])
+    assert batch.lattice is not None
+    kpts = [KPoints(points=KCART), KPoints(points=KCART[:1])]
+
+    def func(lattice: torch.Tensor) -> torch.Tensor:
+        structure = batch.replace(lattice=lattice)
+        return _as_real(
+            int1e("jj", basis, structure, kpoints=pack_kpoints(kpts))
+        )
+
+    out = func(batch.lattice)
+    ref = _as_real(int1e("jj", basis, WATER_CELL, kpoints=KCART))
+    assert torch.allclose(out[0], ref, atol=1e-14)
+    assert torch.equal(out[1], torch.zeros_like(out[1]))
+    jac = jacfwd(func)(batch.lattice)
+    assert torch.equal(jac[1], torch.zeros_like(jac[1]))
+    assert jac[0].abs().max() > 1e-3
 
 
 # gradients
