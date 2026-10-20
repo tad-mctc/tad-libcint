@@ -33,7 +33,6 @@ from tad_mctc.tree import stack
 from torch.autograd import gradcheck, gradgradcheck
 
 from tad_libcint import Basis, Shell, int1e, integrals, library, overlap
-from tad_libcint.basis import Layout
 from tad_libcint.names import PACKED_QUADRUPOLE, QUADRUPOLE_OPERATORS
 
 from .data import (
@@ -43,10 +42,11 @@ from .data import (
     OH,
     POSITIONS,
     WATER,
-    ShellSpec,
     element_shells,
     gto_norm,
     make_shells,
+    pyscf_ao_index,
+    pyscf_shells,
 )
 
 
@@ -225,23 +225,12 @@ def _compare_pyscf(
         spin=None,
     )
 
-    per_atom: list[list[ShellSpec]] = [[] for _ in range(mol.natm)]
-    for ish in range(mol.nbas):
-        # pylint: disable-next=protected-access
-        coeffs = mol._libcint_ctr_coeff(ish)[:, 0].tolist()
-        shell = (int(mol.bas_angular(ish)), mol.bas_exp(ish).tolist(), coeffs)
-        per_atom[mol.bas_atom(ish)].append(shell)
-
-    # PySCF places shells per atom, the basis per element
-    elements: dict[int, list[ShellSpec]] = {}
-    for z, shells in zip(structure.numbers.tolist(), per_atom):
-        assert elements.setdefault(z, shells) == shells
-    basis = Basis(shells=make_shells(elements), spherical=spherical)
+    shells = pyscf_shells(mol, structure.numbers.tolist())
+    basis = Basis(shells=make_shells(shells), spherical=spherical)
 
     ref = torch.from_numpy(mol.intor(intor))
     if spherical:
-        # PySCF orders spherical p functions as (px, py, pz)
-        index = _pyscf_ao_index(basis.layout(structure.numbers))
+        index = pyscf_ao_index(basis.layout(structure.numbers))
         ref = ref[..., index, :][..., index]
     out = int1e(name, basis, structure, packed=False)
     assert torch.allclose(out, ref, atol=1e-11)
@@ -294,16 +283,6 @@ def test_packed_only_quadrupoles(basis: Basis) -> None:
         assert torch.equal(
             int1e(name, basis, WATER), int1e(name, basis, WATER, packed=False)
         )
-
-
-def _pyscf_ao_index(layout: Layout) -> torch.Tensor:
-    """PySCF's AO index of each of our spherical AOs"""
-    index = torch.arange(layout.nao)
-    for ish in range(layout.nsh):
-        if layout.shell_angmom[ish] == 1:
-            first = int(layout.ao_loc[ish])
-            index[first : first + 3] = first + torch.tensor([1, 2, 0])
-    return index
 
 
 def test_spherical_p_order() -> None:
@@ -370,17 +349,6 @@ def test_invalid_inputs(basis: Basis) -> None:
     batch = stack([WATER, WATER])
     with pytest.raises(ValueError, match="at most one batch dimension"):
         overlap(basis, stack([batch, batch]))
-
-
-@pytest.mark.parametrize("periodic", [True, False])
-def test_periodic_unsupported(periodic: bool, basis: Basis) -> None:
-    """Structures with a lattice are refused, even without periodic axes."""
-    cell = WATER.replace(
-        lattice=10 * torch.eye(3, dtype=DTYPE),
-        periodic=torch.full((3,), periodic),
-    )
-    with pytest.raises(NotImplementedError, match="periodic"):
-        overlap(basis, cell)
 
 
 def test_missing_integral(basis: Basis) -> None:

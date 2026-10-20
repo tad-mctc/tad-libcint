@@ -35,6 +35,7 @@ from tad_libcint.library import (
     BAS_SLOTS,
     PTR_ENV_START,
     int2c,
+    int2c_lattice,
 )
 
 
@@ -72,6 +73,33 @@ def test_int2c_components_out_of_range(component: int) -> None:
             bas=np.zeros((1, BAS_SLOTS), dtype=np.int32),
             env=np.zeros(PTR_ENV_START),
             ao_loc=np.array([0, 1], dtype=np.int32),
+        )
+
+
+@pytest.mark.parametrize(
+    "translations, image, match",
+    [
+        (np.zeros((2, 3)), 0, "translations of shape"),
+        (np.zeros((1, 3)), 1, "out of 1 images"),
+    ],
+)
+def test_int2c_lattice_invalid(
+    translations: np.ndarray, image: int, match: str
+) -> None:
+    """Translations that do not match the weights, and image indices beyond
+    them, are refused."""
+    with pytest.raises(ValueError, match=match):
+        int2c_lattice(
+            "int1e_ovlp_sph",
+            (),
+            shls_slice=(0, 1, 1, 2),
+            pairs=np.array([[0, 1, image]]),
+            translations=translations,
+            weights=np.ones((1, 1)),
+            atm=np.zeros((2, ATM_SLOTS), dtype=np.int32),
+            bas=np.zeros((2, BAS_SLOTS), dtype=np.int32),
+            env=np.zeros(PTR_ENV_START),
+            ao_loc=np.array([0, 1, 2], dtype=np.int32),
         )
 
 

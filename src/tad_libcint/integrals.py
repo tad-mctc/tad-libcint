@@ -106,6 +106,19 @@ Forward mode is evaluated through reverse mode (there are no native
 Jacobian-vector products). For the Hessian of a scalar function,
 ``jacrev(grad(f))`` is therefore somewhat faster than
 :func:`torch.func.hessian` (``jacfwd(jacrev(f))``), which works as well.
+
+A periodic structure (with a lattice) gives lattice sums over the images of
+the ket, at the Γ point or at k-points (see :func:`int1e`). They are
+differentiable w.r.t. the lattice as well:
+
+>>> cell = h2.replace(lattice=3.0 * torch.eye(3, **dd))
+>>> s = overlap(basis, cell)
+>>> bool(s[0, 0] > 1.0)  # an atom overlaps with its own images
+True
+>>> jacrev(lambda lat: overlap(basis, cell.replace(lattice=lat)))(
+...     cell.lattice
+... ).shape
+torch.Size([2, 2, 3, 3])
 """
 
 from __future__ import annotations
@@ -119,24 +132,34 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from tad_mctc.io.structure import Structure
-from tad_mctc.neighbor import pairs_within_radii
+from tad_mctc.kpoints import KPoints, to_fractional
+from tad_mctc.neighbor import pairs_within_radii, periodic_pairs_within_radii
 from torch import Tensor
 
 from . import library
-from .basis import Basis, Layout
+from .basis import Basis, Layout, _to_numpy
 from .names import (
     DERIVATIVE_OPERATORS,
-    KET_CENTRED_OPERATORS,
     QUADRUPOLE_OPERATORS,
     IntegralName,
     Side,
 )
 
-__all__ = ["int1e", "overlap"]
+__all__ = ["PERIODIC_OPERATORS", "int1e", "overlap"]
+
+
+PERIODIC_OPERATORS = ("ovlp", "j", "jj", "jjj")
+"""
+Central operators of periodic integrals. Moments about a fixed origin are not
+translation invariant, and the nuclear attraction of all images diverges.
+"""
 
 
 class Inputs(NamedTuple):
-    """Tensor inputs of an integral of one structure"""
+    """
+    Tensor inputs of an integral of one structure. The fields of a periodic
+    structure are absent (``None``) for a molecule.
+    """
 
     numbers: Tensor
     """Atomic numbers, shape ``(nat,)`` (not differentiable)."""
@@ -153,7 +176,27 @@ class Inputs(NamedTuple):
     coeffs: Tensor
     """Coefficients of the basis, shape ``(nparam,)``."""
 
+    lattice: Tensor | None = None
+    """Lattice vectors as rows, shape ``(3, 3)``."""
 
+    periodic: Tensor | None = None
+    """Periodic axes, shape ``(3,)`` (not differentiable)."""
+
+    kpoints: Tensor | None = None
+    """
+    Fractional k-points, shape ``(nk, 3)``, none (``(0, 3)``) for the real
+    integral at the Γ point (not differentiable).
+    """
+
+    kmask: Tensor | None = None
+    """``False`` for padding k-points, shape ``(nk,)``."""
+
+
+# Dynamo cannot trace the C calls, and tracing the construction around them
+# (layouts, numpy) only crashes some PyTorch versions (2.8, 2.10: frozen
+# dataclasses with cached properties; 2.11: cells). Compiled callers run the
+# integrals eagerly, with their gradients, instead.
+@torch.compiler.disable
 def int1e(
     name: str,
     basis: Basis,
@@ -163,9 +206,29 @@ def int1e(
     alphas: Tensor | None = None,
     coeffs: Tensor | None = None,
     packed: bool = True,
+    kpoints: KPoints | Tensor | None = None,
+    precision: float = 1e-10,
 ) -> Tensor:
-    """
+    r"""
     Two-centre one-electron integral over all AOs of a structure.
+
+    For a periodic structure (with a ``lattice``), the integral is the
+    lattice sum over the images of the ket within reach,
+
+    .. math::
+
+        A_{\mu\nu}(\mathbf{k}) = \sum_{\mathbf{T}}
+        e^{i \mathbf{k} \cdot \mathbf{T}}
+        \langle \mu | \hat{O} | \nu(\mathbf{T}) \rangle,
+
+    at the Γ point (real) or at the given k-points (complex), with the
+    translations :math:`\mathbf{T} = \mathbf{n} \mathbf{A}` along the
+    periodic axes only, however short the other lattice vectors (PySCF's
+    ``low_dim_ft_type="inf_vacuum"``). A ket-centred operator (``"j"``,
+    ``"jj"``) is centred on the ket's image. Derivatives w.r.t. the lattice
+    are taken at fixed fractional k-points, so that a strained cell is
+    sampled by the same grid (as in PySCF's stress); the k-points are not
+    differentiable.
 
     Parameters
     ----------
@@ -177,9 +240,10 @@ def int1e(
         The basis set.
     structure : Structure
         Atomic numbers, shape ``([batch,] nat)``, where zeros mark padding,
-        and Cartesian coordinates in Bohr, shape ``([batch,] nat, 3)``. The
-        total charge, unpaired electrons and bonds do not enter the
-        integrals.
+        and Cartesian coordinates in Bohr, shape ``([batch,] nat, 3)``. A
+        periodic structure also has lattice vectors as rows, shape
+        ``([batch,] 3, 3)``, and its periodic axes. The total charge,
+        unpaired electrons and bonds do not enter the integrals.
     nuclear_charges : Tensor | None, optional
         Nuclear charges for ``"nuc"`` integrals, shape ``([batch,] nat)``.
         Non-integer charges are allowed, but not differentiable. Defaults to
@@ -195,32 +259,42 @@ def int1e(
         and ``"jj"`` instead of all 9: the lower triangle xx, yx, yy, zx,
         zy, zz as in tblite (but not traceless). The other components are
         never stored. Defaults to ``True``.
+    kpoints : KPoints | Tensor | None, optional
+        k-points of a periodic structure, Cartesian in 1/Bohr as in PySCF,
+        shape ``([batch,] nk, 3)``, e.g. from
+        :func:`tad_mctc.kpoints.make_kpoints`. A batch with sets of
+        different size is packed with :func:`tad_mctc.kpoints.pack_kpoints`,
+        whose padding k-points give zeros. They are converted to fractional
+        coordinates (from their values) and are not differentiable. Defaults
+        to the Γ point only, with a real result.
+    precision : float, optional
+        Largest neglected contribution to an element of a periodic integral:
+        the images and shell pairs beyond their cutoff, estimated per pair
+        of elements for the operator's rank. Defaults to ``1e-10``.
+        Molecular integrals are only screened where libcint's own threshold
+        would neglect a pair anyway.
 
     Returns
     -------
     Tensor
         Integral of shape ``([batch,] *components, nao, nao)``, with
         libcint's components (e.g. 3 for ``"j"``, 9 or 6 when packed for
-        ``"jj"``). In a batch of different structures, ``nao`` is the
-        largest number of AOs and the integrals of smaller structures are
-        zero-padded.
+        ``"jj"``), and with k-points complex of shape
+        ``([batch,] nk, *components, nao, nao)``. In a batch of different
+        structures, ``nao`` is the largest number of AOs and the integrals
+        of smaller structures are zero-padded.
 
     Raises
     ------
     ValueError
         If the name is not understood, an input has the wrong shape or dtype,
-        or the basis lacks an element.
+        the basis lacks an element, a periodic integral has an origin- or
+        nucleus-dependent operator (see :data:`PERIODIC_OPERATORS`), or
+        k-points are given for a molecule or along a non-periodic axis.
     NotImplementedError
-        If the structure is periodic (has a lattice, even one without
-        periodic directions), or if the libcint build lacks the integral or
-        one of the derivatives required for a gradient.
+        If the libcint build lacks the integral or one of the derivatives
+        required for a gradient.
     """
-    if structure.lattice is not None:
-        raise NotImplementedError(
-            "Integrals of periodic structures (with a lattice) are not "
-            "supported yet."
-        )
-
     iname = IntegralName.parse(name)
     if packed and iname.op in QUADRUPOLE_OPERATORS:
         iname = replace(iname, packed=True)
@@ -228,9 +302,58 @@ def int1e(
     charges = numbers if nuclear_charges is None else nuclear_charges
     alphas = basis.alphas if alphas is None else alphas
     coeffs = basis.coeffs if coeffs is None else coeffs
-    _check_inputs(basis, Inputs(numbers, charges, positions, alphas, coeffs))
+    _check_inputs(
+        basis,
+        numbers=numbers,
+        charges=charges,
+        positions=positions,
+        alphas=alphas,
+        coeffs=coeffs,
+    )
 
-    func = _StructureIntegral(iname, basis)
+    if structure.lattice is None:
+        if kpoints is not None:
+            raise ValueError("k-points require a periodic structure.")
+        return _molecular(
+            iname,
+            basis,
+            numbers=numbers,
+            charges=charges,
+            positions=positions,
+            alphas=alphas,
+            coeffs=coeffs,
+        )
+
+    if iname.op not in PERIODIC_OPERATORS:
+        raise ValueError(
+            f"The operator '{iname.op}' has no periodic integral. Periodic "
+            f"structures support {list(PERIODIC_OPERATORS)}."
+        )
+    if math.isnan(precision) or precision <= 0.0:
+        raise ValueError(f"Expected a positive precision, got {precision}.")
+    return _periodic(
+        iname,
+        basis,
+        structure,
+        charges=charges,
+        alphas=alphas,
+        coeffs=coeffs,
+        kpoints=kpoints,
+        precision=precision,
+    )
+
+
+def _molecular(
+    name: IntegralName,
+    basis: Basis,
+    *,
+    numbers: Tensor,
+    charges: Tensor,
+    positions: Tensor,
+    alphas: Tensor,
+    coeffs: Tensor,
+) -> Tensor:
+    func = _StructureIntegral(name, basis)
 
     def single(n: Tensor, c: Tensor, p: Tensor) -> Tensor:
         out = _PerStructure.apply(func, n, c, p, alphas, coeffs)
@@ -245,6 +368,92 @@ def int1e(
     return torch.vmap(single)(numbers, charges, positions)
 
 
+def _periodic(
+    name: IntegralName,
+    basis: Basis,
+    structure: Structure,
+    *,
+    charges: Tensor,
+    alphas: Tensor,
+    coeffs: Tensor,
+    kpoints: KPoints | Tensor | None,
+    precision: float,
+) -> Tensor:
+    numbers, positions = structure.numbers, structure.positions
+    lattice, periodic = structure.lattice, structure.periodic
+    assert lattice is not None and periodic is not None
+    batch = numbers.shape[:-1]
+
+    # The k-points are construction data: fractional coordinates from
+    # their values (fixed under strain), none at the Gamma point. Converted
+    # from values, the lattice derivative is the same whether the k-points
+    # are constant or built from the (differentiable) lattice; phases from
+    # Cartesian k in torch would instead hold them fixed in Cartesian
+    # coordinates unless built inside the differentiated function.
+    gamma = kpoints is None
+    if isinstance(kpoints, KPoints):
+        points, mask = kpoints.points, kpoints.mask
+    else:
+        if kpoints is None:
+            kpoints = positions.new_zeros((*batch, 0, 3))
+        points = kpoints
+        mask = torch.ones(
+            points.shape[:-1], dtype=torch.bool, device=points.device
+        )
+    if points.ndim not in (2, 3) or points.shape[-1] != 3:
+        raise ValueError(
+            f"Expected k-points of shape ([batch,] nk, 3), got "
+            f"{tuple(points.shape)}."
+        )
+    if points.ndim == 3 and points.shape[:-2] != batch:
+        raise ValueError(
+            f"Expected one k-point set per structure, {tuple(batch)}, got "
+            f"{tuple(points.shape[:-2])}."
+        )
+    fractional = to_fractional(
+        points.detach().to(positions.dtype), lattice.detach()
+    )
+
+    func = _StructureIntegral(name, basis, precision=precision)
+
+    # positional, as `vmap` maps them
+    # pylint: disable-next=too-many-positional-arguments,too-many-arguments
+    def single(
+        n: Tensor,
+        c: Tensor,
+        p: Tensor,
+        lat: Tensor,
+        per: Tensor,
+        k: Tensor,
+        km: Tensor,
+    ) -> Tensor:
+        out = _PerStructure.apply(
+            func, n, c, p, alphas, coeffs, lat, per, k, km
+        )
+        assert isinstance(out, tuple)
+        # rows of the lattice sums: 1, or cos and sin per k-point
+        sums = out[0]
+        if gamma:
+            return sums[0]
+        return torch.complex(sums[0::2], sums[1::2])
+
+    if numbers.ndim == 1:
+        return single(
+            numbers, charges, positions, lattice, periodic, fractional, mask
+        )
+
+    # a batch of structures, which may share the nuclear charges, the
+    # lattice, the periodic axes and the k-points
+    charges = charges.expand(numbers.shape)
+    lattice = lattice.expand(*batch, 3, 3)
+    periodic = periodic.expand(*batch, 3)
+    fractional = fractional.expand(*batch, *fractional.shape[-2:])
+    mask = mask.expand(*batch, mask.shape[-1])
+    return torch.vmap(single)(
+        numbers, charges, positions, lattice, periodic, fractional, mask
+    )
+
+
 def overlap(
     basis: Basis,
     structure: Structure,
@@ -256,11 +465,18 @@ def overlap(
     return int1e("ovlp", basis, structure, alphas=alphas, coeffs=coeffs)
 
 
-def _check_inputs(basis: Basis, inputs: Inputs) -> None:
+def _check_inputs(
+    basis: Basis,
+    *,
+    numbers: Tensor,
+    charges: Tensor,
+    positions: Tensor,
+    alphas: Tensor,
+    coeffs: Tensor,
+) -> None:
     # Only shapes and dtypes: under vmap, the values are not accessible here.
     # The atomic numbers and positions are checked by the `Structure`, but
     # stacking batched structures bypasses its check of the batch dimensions.
-    numbers, charges, positions, alphas, coeffs = inputs
     if numbers.ndim > 2:
         raise ValueError(
             "A structure has at most one batch dimension, got atomic numbers "
@@ -288,6 +504,23 @@ def _check_inputs(basis: Basis, inputs: Inputs) -> None:
         )
 
 
+class _Images(NamedTuple):
+    """
+    Lattice images of the kets of a block (see `_Block`), each entering
+    weighted sums of the block (the integral gets a leading axis of sums).
+    """
+
+    shifts: np.ndarray
+    """Integer image shifts, shape ``(nimg, 3)``."""
+
+    weights: np.ndarray
+    """Weight of each image in each sum, shape ``(nw, nimg)``."""
+
+    def translations(self, lattice: Tensor) -> np.ndarray:
+        """Cartesian translations of the images, shape ``(nimg, 3)``"""
+        return self.shifts @ _to_numpy(lattice)
+
+
 class _Block(NamedTuple):
     """
     Block of an integral matrix: its bra (rows) and ket (columns) shells.
@@ -295,16 +528,28 @@ class _Block(NamedTuple):
     With `pairs` (bra and ket shell, sorted by bra shell), only these shell
     pairs of the block are evaluated and all others are zero (screening, see
     `_screened_pairs`).
+
+    With `images`, the block holds weighted lattice sums over images of the
+    kets: `pairs` has a third column, the image of the ket, and is sorted by
+    bra shell, ket shell and image. The ket shells must belong to atoms of
+    their own (see `_with_ket_copies`). The integral of the block has a
+    leading axis of the `nw` sums.
     """
 
     bra: range
     ket: range
     pairs: np.ndarray | None
+    images: _Images | None = None
 
     @classmethod
     def full(cls, layout: Layout, pairs: np.ndarray | None) -> _Block:
         """The whole matrix"""
         return cls(range(layout.nsh), range(layout.nsh), pairs)
+
+    @property
+    def lead(self) -> tuple[int, ...]:
+        """Leading axes of the block's integral: the sums of images"""
+        return () if self.images is None else (len(self.images.weights),)
 
     @property
     def shls_slice(self) -> tuple[int, int, int, int]:
@@ -317,9 +562,22 @@ class _Block(NamedTuple):
         return self.bra == self.ket
 
     def transposed(self) -> _Block:
-        """The block with bra and ket exchanged"""
-        pairs = None if self.pairs is None else _sorted(self.pairs[:, ::-1])
-        return _Block(self.ket, self.bra, pairs)
+        """
+        The block with bra and ket exchanged. A lattice sum of
+        :math:`\\langle \\mu | \\nu(\\mathbf{T}) \\rangle` is one of
+        :math:`\\langle \\nu | \\mu(-\\mathbf{T}) \\rangle` (translation
+        invariance), so the images are negated.
+        """
+        images = self.images
+        if images is not None:
+            images = images._replace(shifts=-images.shifts)
+        pairs = self.pairs
+        if pairs is not None:
+            order = [1, 0, *range(2, pairs.shape[1])]
+            pairs = _sorted(pairs[:, order])
+        return self._replace(
+            bra=self.ket, ket=self.bra, pairs=pairs, images=images
+        )
 
     def rows(self, bra: range) -> _Block:
         """
@@ -328,28 +586,32 @@ class _Block(NamedTuple):
         own atom).
         """
         if self.pairs is None:
-            return _Block(bra, self.ket, None)
+            return self._replace(bra=bra)
 
         first, last = np.searchsorted(self.pairs[:, 0], [bra.start, bra.stop])
         pairs = self.pairs[first:last]
         ket = range(int(pairs[:, 1].min()), int(pairs[:, 1].max()) + 1)
-        return _Block(bra, ket, pairs)
+        return self._replace(bra=bra, ket=ket, pairs=pairs)
 
     def uncontracted(self, layout: Layout) -> _Block:
         """The block of :attr:`Basis.uncontracted` (layout of this basis)"""
         bra = layout.uncontracted_shells(self.bra)
         ket = layout.uncontracted_shells(self.ket)
-        if self.pairs is None:
-            return _Block(bra, ket, None)
-        return _Block(bra, ket, _sorted(layout.uncontracted_pairs(self.pairs)))
+        pairs = self.pairs
+        if pairs is not None:
+            pairs = _sorted(layout.uncontracted_pairs(pairs))
+        return self._replace(bra=bra, ket=ket, pairs=pairs)
 
 
 def _sorted(pairs: np.ndarray) -> np.ndarray:
-    """Shell pairs sorted by bra, then by ket shell"""
-    # one key per pair sorts much faster than two keys
-    nket = int(pairs[:, 1].max(initial=0)) + 1
-    keys = pairs[:, 0].astype(np.int64) * nket + pairs[:, 1]
-    return np.stack(np.divmod(np.sort(keys), nket), axis=-1)
+    """
+    Shell pairs sorted by bra, then by ket shell (and then by image, for a
+    third column)
+    """
+    # one key per pair sorts much faster than several keys
+    sizes = [int(column.max(initial=0)) + 1 for column in pairs.T]
+    keys = np.ravel_multi_index(tuple(pairs.T.astype(np.int64)), sizes)
+    return np.stack(np.unravel_index(np.sort(keys), sizes), axis=-1)
 
 
 _SCREENING = 60.0
@@ -395,6 +657,257 @@ def _screened_pairs(layout: Layout, inputs: Inputs) -> np.ndarray:
     return _sorted(layout.shell_pairs(np.stack([bra, ket], axis=-1)))
 
 
+# Periodic screening
+#
+# The images of a lattice sum are screened per pair of elements: beyond a
+# cutoff, every block and the images within one decay length of it add less
+# than the precision (see `_pair_cutoff`). libcint's own threshold for
+# products of primitives (exp(-60)) stays as it is.
+#
+# Benchmarked with the GFN2-xTB basis on eight cells (diamond, Si, LiF,
+# graphene, polyethylene, and, after choosing the margin, NaCl, MgO, ice),
+# for "ovlp", "j" and "jj" against an exp(-60) reference:
+#
+# - The Gaussian product factor alone (the molecular screening) misses the
+#   coefficients, the polynomial prefactors, the moments and the number of
+#   images: errors up to 1e5 times the precision.
+# - A global cutoff from the smallest exponent with tblite's 40 Bohr cap
+#   leaves errors independent of the accuracy for diffuse shells (0.16 in
+#   the NaCl quadrupole).
+# - PySCF's `_estimate_rcut` is safe for overlaps, but not for moments in
+#   ionic cells (up to 900 times the precision).
+# - This bound with the operator's rank and a margin of 10 kept the errors
+#   below 0.1 times the precision in all eight cells, at the cost of PySCF's
+#   estimate or less. At the default of 1e-10, the errors stayed below
+#   1e-11; 1e-12 costs 10-25 % more blocks.
+
+
+_PRECISION_MARGIN = 10.0
+"""
+Factor between the precision and the bound of a block at the cutoff: the
+error jumps as discrete images cross the cutoff.
+"""
+
+_COMMON_FACTOR = {0: 0.282094791773878143, 1: 0.488602511902919921}
+"""libcint's normalization of s and p functions (1 for higher ones)."""
+
+_CUTOFF_STEP = 0.05
+"""Resolution of the cutoffs in Bohr."""
+
+
+def _operator_rank(name: IntegralName) -> int:
+    """
+    Power of the distance with which a block can grow: one per factor of a
+    ket-centred moment and per derivative
+    """
+    return name.op.count("j") + len(name.bra) + len(name.ket)
+
+
+def _pair_cutoff(
+    bra: tuple[np.ndarray, np.ndarray, int],
+    ket: tuple[np.ndarray, np.ndarray, int],
+    rank: int,
+    threshold: float,
+    cell: tuple[float, int],
+) -> float:
+    """
+    Distance beyond which the blocks of two shells are below `threshold`.
+
+    The block of the primitives with exponents a, b and coefficients c_a,
+    c_b (angular momenta l_a, l_b) of an operator of rank n about the ket is
+    bounded by
+
+        |c_a c_b| f_a f_b (pi/(a+b))^1.5 (bR/(a+b) + w)^l_a
+            (aR/(a+b) + w)^(l_b + n) exp(-ab/(a+b) R^2),
+
+    with the product's width w = 1/sqrt(2(a+b)), times the number of
+    images within one decay length 1/(2 mu R) at R (from the cell's measure:
+    volume, area or length of its `dim` periodic axes).
+    """
+    (a, ca, la), (b, cb, lb) = bra, ket
+    measure, dim = cell
+    a, b = a[:, None, None], b[None, :, None]
+    p, mu = a + b, a * b / (a + b)
+    pref = (
+        np.abs(ca[:, None, None] * cb[None, :, None])
+        * _COMMON_FACTOR.get(la, 1.0)
+        * _COMMON_FACTOR.get(lb, 1.0)
+        * (np.pi / p) ** 1.5
+    )
+
+    # beyond the Gaussian's decay to the threshold (plus the polynomial)
+    rmax = np.sqrt((np.log(pref.max() / threshold) + 100.0) / mu.min())
+    r = np.arange(0.0, rmax + _CUTOFF_STEP, _CUTOFF_STEP)
+    width = 1.0 / np.sqrt(2.0 * p)
+    bound = (
+        pref
+        * (b * r / p + width) ** la
+        * (a * r / p + width) ** (lb + rank)
+        * np.exp(-mu * r**2)
+    )
+    decay = 1.0 / (2.0 * mu * np.maximum(r, 1e-3))
+    shell = {3: 4.0 * np.pi * r**2, 2: 2.0 * np.pi * r, 1: 2.0}.get(dim, 0.0)
+    count = np.maximum(1.0, shell * decay / measure)
+    worst = (bound * count).max(axis=(0, 1))
+
+    above = np.flatnonzero(worst > threshold)
+    return 0.0 if len(above) == 0 else float(r[min(above[-1] + 1, len(r) - 1)])
+
+
+def _cell_measure(
+    lattice: np.ndarray, periodic: np.ndarray
+) -> tuple[float, int]:
+    """
+    Volume, area or length of the periodic axes (1 for none), and their
+    number: the square root of the Gram determinant
+    """
+    axes = lattice[periodic]
+    return float(np.sqrt(np.linalg.det(axes @ axes.T))), len(axes)
+
+
+def _element_cutoffs(
+    basis: Basis,
+    inputs: Inputs,
+    elements: list[int],
+    *,
+    rank: int,
+    precision: float,
+    cell: tuple[float, int],
+) -> np.ndarray:
+    """
+    Cutoff of the blocks of a bra atom and a ket atom of each pair of
+    `elements`, shape ``(nelem, nelem)``
+    """
+    shells = dict(basis.element_shells)
+    alphas, coeffs = _to_numpy(inputs.alphas), _to_numpy(inputs.coeffs)
+    threshold = precision / _PRECISION_MARGIN
+
+    def params(
+        shell: tuple[int, int, int],
+    ) -> tuple[np.ndarray, np.ndarray, int]:
+        l, n, first = shell
+        return alphas[first : first + n], coeffs[first : first + n], l
+
+    cut = np.zeros((len(elements), len(elements)))
+    for i, zi in enumerate(elements):
+        for j, zj in enumerate(elements):
+            cut[i, j] = max(
+                _pair_cutoff(params(si), params(sj), rank, threshold, cell)
+                for si in shells[zi]
+                for sj in shells[zj]
+            )
+    return cut
+
+
+def _periodic_block(
+    name: IntegralName, basis: Basis, inputs: Inputs, precision: float
+) -> _Block:
+    """
+    The lattice sums of a periodic structure: the shell pairs of each bra
+    atom and the ket copy (see `_with_ket_copies`) of each atom image within
+    the cutoff of their elements, with the weights of the requested sums.
+    """
+    assert inputs.lattice is not None and inputs.periodic is not None
+    assert inputs.kpoints is not None and inputs.kmask is not None
+    numbers = inputs.numbers.cpu()
+    positions = inputs.positions.detach().cpu().to(torch.float64)
+    lattice = inputs.lattice.detach().cpu().to(torch.float64)
+    periodic = inputs.periodic.cpu()
+    layout = basis.layout(inputs.numbers)
+
+    # cutoffs of each pair of elements, as bra and as ket
+    elements = sorted(set(numbers.tolist()) - {0})
+    cell = _cell_measure(lattice.numpy(), periodic.numpy())
+    rank = _operator_rank(name)
+    cut = _element_cutoffs(
+        basis, inputs, elements, rank=rank, precision=precision, cell=cell
+    )
+    index = np.zeros(int(numbers.numpy().max(initial=0)) + 1, dtype=np.int64)
+    index[elements] = np.arange(len(elements))
+    element = index[numbers.numpy()]
+
+    # all pairs within the larger cutoff of either direction, then each
+    # direction within its own
+    real = numbers.numpy() != 0
+    radius = np.maximum(cut, cut.T).max(axis=1, initial=0.0)[element] * real
+    i, j, n = (
+        x.numpy()
+        for x in periodic_pairs_within_radii(
+            Structure(
+                numbers=numbers,
+                positions=positions,
+                lattice=lattice,
+                periodic=periodic,
+            ),
+            torch.from_numpy(radius),
+        )
+    )
+    distance = np.linalg.norm(
+        positions.numpy()[j] + n @ lattice.numpy() - positions.numpy()[i],
+        axis=-1,
+    )
+    forward = distance <= cut[element[i], element[j]]
+    backward = distance <= cut[element[j], element[i]]
+    onsite = np.flatnonzero(real)
+    bra = np.concatenate([i[forward], j[backward], onsite])
+    ket = np.concatenate([j[forward], i[backward], onsite])
+    shift = np.concatenate(
+        [n[forward], -n[backward], np.zeros((len(onsite), 3), dtype=np.int64)]
+    )
+
+    # images, and the shell pairs of each atom pair with its image
+    shifts, image = np.unique(shift.reshape(-1, 3), axis=0, return_inverse=True)
+    image = image.reshape(-1)
+    pairs = layout.shell_pairs(np.stack([bra, ket, image], axis=-1))
+    pairs[:, 1] += layout.nsh  # the ket copies
+    pairs = _sorted(pairs)
+
+    images = _Images(shifts, _image_weights(inputs, shifts))
+    return _Block(
+        range(layout.nsh), range(layout.nsh, 2 * layout.nsh), pairs, images
+    )
+
+
+def _image_weights(inputs: Inputs, shifts: np.ndarray) -> np.ndarray:
+    """
+    Weights of the images in the sums: a single sum at the Γ point, or the
+    real and imaginary part of the Bloch phases of each k-point (zero for
+    padding), shape ``(nw, nimg)``
+    """
+    assert inputs.kpoints is not None and inputs.kmask is not None
+    assert inputs.periodic is not None
+    kpoints = _to_numpy(inputs.kpoints)
+    kmask = inputs.kmask.cpu().numpy()
+    if len(kpoints) == 0:
+        return np.ones((1, len(shifts)))
+
+    periodic = inputs.periodic.cpu().numpy()
+    offaxis = np.abs(kpoints[kmask][:, ~periodic])
+    if offaxis.size > 0 and offaxis.max() > 1e-8:
+        raise ValueError(
+            "The k-points have components along a non-periodic axis "
+            f"(fractional, up to {offaxis.max():.3g})."
+        )
+
+    phase = 2.0 * np.pi * kpoints @ shifts.T.astype(np.float64)
+    weights = np.stack([np.cos(phase), np.sin(phase)], axis=1)
+    weights *= kmask[:, None, None]
+    return weights.reshape(2 * len(kpoints), len(shifts))
+
+
+def _with_ket_copies(inputs: Inputs) -> Inputs:
+    """
+    The inputs with a copy of every atom for the kets of a lattice sum,
+    which the C driver moves to the images (atoms ``nat`` to ``2 nat``).
+    Gradients of both copies add up through the concatenation.
+    """
+    return inputs._replace(
+        numbers=torch.cat([inputs.numbers, inputs.numbers]),
+        charges=torch.cat([inputs.charges, inputs.charges]),
+        positions=torch.cat([inputs.positions, inputs.positions]),
+    )
+
+
 def _integral(
     name: IntegralName,
     basis: Basis,
@@ -402,7 +915,19 @@ def _integral(
     block: _Block,
     values: bool,
 ) -> Tensor:
-    out = _Int2c.apply(*inputs, basis, name, block, values)
+    # the fields one by one: Dynamo fails on slices of namedtuples with defaults
+    out = _Int2c.apply(
+        inputs.numbers,
+        inputs.charges,
+        inputs.positions,
+        inputs.alphas,
+        inputs.coeffs,
+        inputs.lattice,
+        basis,
+        name,
+        block,
+        values,
+    )
     assert isinstance(out, Tensor)
     return out
 
@@ -433,7 +958,7 @@ def _evaluate(
             integral = _integral(
                 source, basis, inputs, block.transposed(), values
             )
-            return _transpose(integral, source)
+            return _transpose(integral, source, len(block.lead))
         missing += f" and its transpose '{source.symbol(basis.spherical)}'"
 
     raise NotImplementedError(
@@ -463,47 +988,78 @@ _CHUNK_ELEMENTS = 2**22
 
 
 class _StructureIntegral:
-    """The integral `name` of one structure as a function of its inputs"""
+    """
+    The integral `name` of one structure as a function of its inputs. A
+    periodic structure (with a lattice among the inputs) gives the weighted
+    lattice sums of its block (see `_periodic_block`), with a leading axis
+    of the sums.
+    """
 
-    def __init__(self, name: IntegralName, basis: Basis) -> None:
+    def __init__(
+        self, name: IntegralName, basis: Basis, precision: float = 0.0
+    ) -> None:
         self.name = name
         self.basis = basis
-        self._screening: tuple[list[Tensor], np.ndarray] | None = None
+        self.precision = precision
+        self._screening: tuple[list[Tensor], _Block] | None = None
 
     def __call__(
         self, *tensors: Tensor, values: bool = True
     ) -> tuple[Tensor, ...]:
         inputs = Inputs(*tensors)
         block = self.block(inputs)
-        return (_evaluate(self.name, self.basis, inputs, block, values),)
+        return (
+            _evaluate(
+                self.name, self.basis, self.internal(inputs), block, values
+            ),
+        )
+
+    @staticmethod
+    def internal(inputs: Inputs) -> Inputs:
+        """The inputs of the block: with ket copies for a lattice sum"""
+        return inputs if inputs.lattice is None else _with_ket_copies(inputs)
 
     def block(self, inputs: Inputs) -> _Block:
-        """The whole matrix, screened for large structures"""
+        """
+        The whole matrix, screened for large structures, or the lattice
+        sums of a periodic structure. Either is reused for the structure of
+        the last call, as the backward pass evaluates the integral (its
+        graph) of the forward pass again.
+        """
+        if inputs.lattice is not None:
+            structure = [t for t in inputs if t is not None]
+            block = self._reused(structure)
+            if block is None:
+                block = _periodic_block(
+                    self.name, self.basis, inputs, self.precision
+                )
+                self._keep(structure, block)
+            return block
+
         layout = self.basis.layout(inputs.numbers)
-        return _Block.full(layout, self._shell_pairs(layout, inputs))
-
-    def _shell_pairs(self, layout: Layout, inputs: Inputs) -> np.ndarray | None:
-        """
-        The screened shell pairs (`_screened_pairs`), or ``None`` (all pairs)
-        for small structures. They are reused for the structure of the last
-        call, as the backward pass evaluates the integral (its graph) of the
-        forward pass again.
-        """
         if layout.nsh**2 < _SCREENING_MIN_PAIRS:
-            return None
-
+            return _Block.full(layout, None)
         structure = [inputs.numbers, inputs.positions, inputs.alphas]
-        if self._screening is not None:
-            last, pairs = self._screening
-            if all(
-                a.shape == b.shape and torch.equal(a, b)
-                for a, b in zip(last, structure)
-            ):
-                return pairs
+        block = self._reused(structure)
+        if block is None:
+            block = _Block.full(layout, _screened_pairs(layout, inputs))
+            self._keep(structure, block)
+        return block
 
-        pairs = _screened_pairs(layout, inputs)
-        self._screening = ([t.detach().clone() for t in structure], pairs)
-        return pairs
+    def _reused(self, structure: list[Tensor]) -> _Block | None:
+        """The block of the last call, if it was for the same structure"""
+        if self._screening is None:
+            return None
+        last, block = self._screening
+        same = all(
+            a.shape == b.shape and torch.equal(a, b)
+            for a, b in zip(last, structure)
+        )
+        return block if same else None
+
+    def _keep(self, structure: list[Tensor], block: _Block) -> None:
+        """Keep the block of `structure` for the next call"""
+        self._screening = ([t.detach().clone() for t in structure], block)
 
 
 class _SelectedOutputs:
@@ -669,16 +1225,19 @@ class _JacobianVectorProduct:
             v.unsqueeze(0) if dim is None else v.movedim(dim, 0)
             for v, dim in zip(vectors, dims)
         ]
-        _, positions, alphas, coeffs = (  # charges are not differentiable
-            v if need else None for v, need in zip(batch, self.needs)
-        )
+        # charges, periodic axes and k-points are not differentiable
+        needed = [v if need else None for v, need in zip(batch, self.needs)]
+        # in the order of `Inputs` (no lattice for a molecule)
+        _, positions, alphas, coeffs, lattice, *_ = [*needed, None]
+        if inputs.lattice is not None and positions is not None:
+            positions = torch.cat([positions, positions], dim=1)  # ket copies
 
         out = _tangent(
             self.func.name,
             self.func.basis,
-            inputs,
+            self.func.internal(inputs),
             self.func.block(inputs),
-            _Tangents(positions, alphas, coeffs),
+            _Tangents(positions, alphas, coeffs, lattice),
             nbatch=max(len(v) for v in batch),
         )
         return (out if self.vector_dims else out[0],)
@@ -874,6 +1433,7 @@ class _Int2c(torch.autograd.Function):
         positions: Tensor,
         alphas: Tensor,
         coeffs: Tensor,
+        lattice: Tensor | None,
         basis: Basis,
         name: IntegralName,
         block: _Block,
@@ -882,6 +1442,7 @@ class _Int2c(torch.autograd.Function):
         layout = basis.layout(numbers)
         rows, cols = layout.aos(block.bra), layout.aos(block.ket)
         shape = (
+            *block.lead,
             *name.comp_shape,
             rows.stop - rows.start,
             cols.stop - cols.start,
@@ -890,6 +1451,23 @@ class _Int2c(torch.autograd.Function):
             return positions.new_zeros(()).expand(shape)
         if 0 in shape:
             return positions.new_zeros(shape)
+
+        if block.images is not None:
+            assert lattice is not None and block.pairs is not None
+            out = library.int2c_lattice(
+                name.symbol(basis.spherical),
+                name.unpacked.comp_shape,
+                shls_slice=block.shls_slice,
+                pairs=block.pairs,
+                translations=block.images.translations(lattice),
+                weights=block.images.weights,
+                components=name.components,
+                atm=layout.atm(charges),
+                bas=layout.bas,
+                env=layout.env(charges, positions, alphas, coeffs),
+                ao_loc=layout.ao_loc,
+            ).reshape(shape)
+            return torch.from_numpy(out).to(positions.device, positions.dtype)
 
         out = library.int2c(
             name.symbol(basis.spherical),
@@ -915,8 +1493,12 @@ class _Int2c(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx: Any, grad_out: Tensor) -> tuple[Tensor | None, ...]:
-        inputs = Inputs(*ctx.saved_tensors)
-        need_pos, need_alphas, need_coeffs = ctx.needs_input_grad[2:5]
+        numbers, charges, positions, alphas, coeffs, lattice = ctx.saved_tensors
+        inputs = Inputs(
+            numbers, charges, positions, alphas, coeffs, lattice=lattice
+        )
+        needs = ctx.needs_input_grad
+        need_pos, need_alphas, need_coeffs, need_lattice = needs[2:6]
         args = (grad_out, ctx.name, ctx.basis, inputs, ctx.block)
 
         return (
@@ -925,6 +1507,7 @@ class _Int2c(torch.autograd.Function):
             _grad_positions(*args) if need_pos else None,
             _grad_alphas(*args) if need_alphas else None,
             _grad_coeffs(*args) if need_coeffs else None,
+            _grad_lattice(*args) if need_lattice else None,
             None,  # basis
             None,  # name
             None,  # block
@@ -972,38 +1555,36 @@ def _grad_positions(
         )
 
     layout = basis.layout(inputs.numbers)
-    g = _flat_components(grad_out, name)
-
-    def nabla(side: Side, rows: _Block) -> Tensor:
-        d = _derivative("ip", side, name, basis, inputs, block=rows)
-        return d.reshape(3, len(g), *d.shape[-2:])
+    g = _flat_components(grad_out)
 
     # In a diagonal block of a hermitian integral, the ket derivative is the
     # transpose of the bra derivative.
     symmetric = name.is_hermitian and block.is_diagonal
+    invariant = _translation_invariant(name)
 
     # libcint's nabla acts on the electron coordinate, which is minus the
     # derivative with respect to the function's centre
     grad = torch.zeros_like(inputs.positions)
     for rows, cols, sub in _row_blocks(layout, block, 3 * len(g)):
         weights = _weights(g, rows, cols, symmetric=symmetric)
-        bra = _contract(weights, nabla("bra", sub), "bra")
+        nabla = _derivative("ip", "bra", name, basis, inputs, block=sub)
+        nabla = nabla.reshape(3, *weights.shape)
+        bra = _contract(weights, nabla, "bra")
         bra_atoms = layout.ao_to_atom[layout.aos(sub.bra)]
         grad = grad.index_add(0, bra_atoms, -bra.mT)
         if symmetric:
             continue
 
-        ket = _contract(weights, nabla("ket", sub), "ket")
-        if not name.is_symmetric:
-            ket = ket - _ket_operator_term(
-                grad_out[..., rows, cols], name, basis, inputs, sub
-            )
+        if invariant:
+            ket = -_contract(weights, nabla, "ket")
+        else:
+            ket = _ket_term(weights, name, basis, inputs, block=sub)
         ket_atoms = layout.ao_to_atom[layout.aos(sub.ket)]
         grad = grad.index_add(0, ket_atoms, -ket.mT)
     return grad
 
 
-def _ket_operator_term(
+def _grad_lattice(
     grad_out: Tensor,
     name: IntegralName,
     basis: Basis,
@@ -1011,34 +1592,72 @@ def _ket_operator_term(
     block: _Block,
 ) -> Tensor:
     r"""
-    Gradient from the operator's own dependence on the ket centre.
-
-    For :math:`(\mathbf{r} - \mathbf{R}_\nu)^{\otimes n}`, the derivative
-    w.r.t. :math:`R_{\nu,d}` replaces each of the ``n`` factors in turn by
-    :math:`-\delta_{d,\cdot}`, which leaves the operator of rank ``n - 1``.
+    Gradient w.r.t. the lattice vectors (as rows). The ket of image
+    :math:`\mathbf{n}` sits at :math:`\mathbf{R} + \mathbf{n} \mathbf{A}`,
+    so row ``a`` is the ket term of the position gradient with the images
+    weighted by :math:`n_a`, summed over all kets. By translation invariance
+    (see `_translation_invariant`), the ket term is minus the bra term.
     """
-    nao = grad_out.shape[-2:]
-    if name.packed:
-        # the components left out do not enter the packed integral
-        g = _flat_components(grad_out, name)
-        index = torch.tensor(name.components, device=g.device)
-        name = name.unpacked
-        full = g.new_zeros(math.prod(name.comp_shape), *nao)
-        grad_out = full.index_copy(0, index, g)
+    assert inputs.lattice is not None
+    layout = basis.layout(inputs.numbers)
+    g = _flat_components(grad_out)
+    axes, stacked = _lattice_axes(block)
 
-    rank = len(name.op)  # "j", "jj", "jjj"
-    lower_name = replace(name, op=KET_CENTRED_OPERATORS[name.op])
-    lower = _flat_components(
-        _evaluate(lower_name, basis, inputs, block), lower_name
-    )
+    grad = inputs.lattice.new_zeros(3, 3)
+    if not axes:
+        return grad
+    index = torch.tensor(axes, device=grad.device)
+    for rows, cols, sub in _row_blocks(layout, stacked, 3 * len(axes) * len(g)):
+        weights = _weights(g, rows, cols)
+        nabla = _derivative("ip", "bra", name, basis, inputs, block=sub)
+        nabla = nabla.reshape(3 * len(axes), *weights.shape)
+        # minus the ket term, see `_grad_positions`
+        ket = _contract(weights, nabla, "ket").sum(-1)
+        grad = grad.index_add(0, index, ket.reshape(3, len(axes)).mT)
+    return grad
 
-    g = grad_out.reshape(*name.bra_shape, *(3,) * rank, *name.ket_shape, *nao)
-    first = len(name.bra_shape)
-    terms = []
-    for factor in range(rank):
-        gk = g.movedim(first + factor, 0).reshape(3, *lower.shape)
-        terms.append(_contract(lower, gk, "ket"))
-    return -torch.stack(terms).sum(0)
+
+def _translation_invariant(name: IntegralName) -> bool:
+    """
+    Whether the integral is invariant under a common translation of its bra
+    and ket (and the operator, if centred on the ket). Its derivative w.r.t.
+    the ket centre is then minus that w.r.t. the bra centre.
+    """
+    return name.op in PERIODIC_OPERATORS
+
+
+def _lattice_axes(block: _Block) -> tuple[list[int], _Block]:
+    """
+    The lattice axes along which the block has images, and the block with
+    the sums of its images weighted by the shift along each of them, axis
+    by axis (leading axis of the integral ``(naxes * nw,)``).
+    """
+    assert block.images is not None
+    shifts, weights = block.images
+    axes = [a for a in range(3) if shifts[:, a].any()]
+    # (naxes, nw, nimg), also for no axes
+    stacked = shifts.T[axes, None, :] * weights
+    images = block.images._replace(weights=stacked.reshape(-1, len(shifts)))
+    return axes, block._replace(images=images)
+
+
+def _ket_term(
+    weights: Tensor,
+    name: IntegralName,
+    basis: Basis,
+    inputs: Inputs,
+    *,
+    block: _Block,
+) -> Tensor:
+    """
+    The block's derivatives w.r.t. the electron coordinate in the ket
+    function, contracted with `weights` (the gradient of the block,
+    flattened components), shape ``(3, nao_ket)``, for an operator that does
+    not depend on the ket centre
+    """
+    assert name.is_symmetric
+    nabla = _derivative("ip", "ket", name, basis, inputs, block=block)
+    return _contract(weights, nabla.reshape(3, *weights.shape), "ket")
 
 
 def _grad_alphas(
@@ -1049,7 +1668,7 @@ def _grad_alphas(
     block: _Block,
 ) -> Tensor:
     # d/dα exp(-α r²) = -r² exp(-α r²), with r relative to the centre ("rr")
-    g = _flat_components(grad_out, name)
+    g = _flat_components(grad_out)
     ubasis, ulayout, ublock, bra_ao, ket_ao = _uncontracted(
         basis, inputs, block
     )
@@ -1083,7 +1702,7 @@ def _grad_coeffs(
 ) -> Tensor:
     # An uncontracted integral is the product of its bra and ket coefficients
     # and the integral with unit coefficients.
-    g = _flat_components(grad_out, name)
+    g = _flat_components(grad_out)
     ubasis, ulayout, ublock, bra_ao, ket_ao = _uncontracted(
         basis, inputs, block
     )
@@ -1122,6 +1741,7 @@ class _Tangents(NamedTuple):
     positions: Tensor | None
     alphas: Tensor | None
     coeffs: Tensor | None
+    lattice: Tensor | None = None
 
 
 def _tangent(
@@ -1135,14 +1755,15 @@ def _tangent(
 ) -> Tensor:
     """
     Jacobian-vector products of a block of the integral `name` with a batch
-    of `nbatch` tangents, shape ``(nbatch, *components, nao_bra, nao_ket)``
+    of `nbatch` tangents, shape ``(nbatch, *lead, *components, nao_bra,
+    nao_ket)`` (with the leading sums of a block's images)
     """
     layout = basis.layout(inputs.numbers)
     rows, cols = layout.aos(block.bra), layout.aos(block.ket)
     # in the (column-major) memory layout of libcint's integrals, as forward
     # mode copies a tangent with another layout than its primal
     ncomp, nrows, ncols = (
-        math.prod(name.comp_shape),
+        math.prod(block.lead) * math.prod(name.comp_shape),
         rows.stop - rows.start,
         cols.stop - cols.start,
     )
@@ -1154,11 +1775,12 @@ def _tangent(
         (_tangent_positions, tangents.positions),
         (_tangent_alphas, tangents.alphas),
         (_tangent_coeffs, tangents.coeffs),
+        (_tangent_lattice, tangents.lattice),
     )
     for add, tangent in terms:
         if tangent is not None:
             add(out, tangent, name, basis, inputs, block=block)
-    return out.reshape(nbatch, *name.comp_shape, *out.shape[-2:])
+    return out.reshape(nbatch, *block.lead, *name.comp_shape, *out.shape[-2:])
 
 
 def _tangent_positions(
@@ -1179,73 +1801,78 @@ def _tangent_positions(
     layout = basis.layout(inputs.numbers)
     nbatch, ncomp = out.shape[:2]
 
-    def nabla(side: Side, rows: _Block) -> Tensor:
-        d = _derivative("ip", side, name, basis, inputs, block=rows)
-        return d.reshape(3, ncomp, *d.shape[-2:])
-
     def atoms(shells: range) -> Tensor:
         # tangents of the atoms of the AOs, shape (batch, nao, 3)
         return tangent[:, layout.ao_to_atom[layout.aos(shells)]]
 
     # the ket derivative of a symmetric block, see `_grad_positions`
     symmetric = name.is_hermitian and block.is_diagonal
+    invariant = _translation_invariant(name)
 
     # minus libcint's nabla, see `_grad_positions`
     for rows, cols, sub in _row_blocks(layout, block, ncomp * max(3, nbatch)):
-        bra = -_directional(nabla("bra", sub), atoms(sub.bra), "bra")
+        nabla = _derivative("ip", "bra", name, basis, inputs, block=sub)
+        nabla = nabla.reshape(3, ncomp, *nabla.shape[-2:])
+        bra = -_directional(nabla, atoms(sub.bra), "bra")
         out[..., rows, cols] += bra
         if symmetric:
             out[..., cols, rows] += bra.mT
             continue
 
-        ket = -_directional(nabla("ket", sub), atoms(sub.ket), "ket")
-        if not name.is_symmetric:
-            ket = ket - _ket_operator_tangent(
-                atoms(sub.ket), name, basis, inputs, sub
+        if invariant:
+            out[..., rows, cols] += _directional(nabla, atoms(sub.ket), "ket")
+        else:
+            out[..., rows, cols] += _ket_tangent(
+                atoms(sub.ket), ncomp, name, basis, inputs, block=sub
             )
-        out[..., rows, cols] += ket
 
 
-def _ket_operator_tangent(
+def _tangent_lattice(
+    out: Tensor,
     tangent: Tensor,
     name: IntegralName,
     basis: Basis,
     inputs: Inputs,
+    *,
+    block: _Block,
+) -> None:
+    """
+    The transpose of `_grad_lattice`: the kets of image n move by
+    ``n @ tangent``, the tangent of the lattice vectors, shape
+    ``(batch, 3, 3)``
+    """
+    layout = basis.layout(inputs.numbers)
+    nbatch, ncomp = out.shape[:2]
+    axes, stacked = _lattice_axes(block)
+    if not axes:
+        return
+    move = tangent[:, axes]
+    size = ncomp * len(axes) * max(3, nbatch)
+    for rows, cols, sub in _row_blocks(layout, stacked, size):
+        nabla = _derivative("ip", "bra", name, basis, inputs, block=sub)
+        nabla = nabla.reshape(3, len(axes), ncomp, *nabla.shape[-2:])
+        # minus the ket tangent, see `_grad_lattice`
+        out[..., rows, cols] += torch.einsum("dacij,bad->bcij", nabla, move)
+
+
+def _ket_tangent(
+    tangent: Tensor,
+    ncomp: int,
+    name: IntegralName,
+    basis: Basis,
+    inputs: Inputs,
+    *,
     block: _Block,
 ) -> Tensor:
-    r"""
-    Tangent from the operator's own dependence on the ket centre, for the
-    tangents of the ket AOs' atoms, shape ``(batch, nao_ket, 3)``.
-
-    The transpose of `_ket_operator_term`: each factor
-    :math:`(\mathbf{r} - \mathbf{R}_\nu)_{a_i}` in turn is replaced by the
-    tangent :math:`t_{a_i}`, which leaves the operator of rank ``n - 1``.
     """
-    full = name.unpacked
-    rank = len(name.op)  # "j", "jj", "jjj"
-    lower_name = replace(full, op=KET_CENTRED_OPERATORS[name.op])
-    lower = _evaluate(lower_name, basis, inputs, block)
-    nbra, nket = len(full.bra_shape), len(full.ket_shape)
-    nao = lower.shape[-2:]
-    lower = lower.reshape(
-        *full.bra_shape, *(3,) * (rank - 1), *full.ket_shape, *nao
-    )
-
-    nbatch = len(tangent)
-    terms = []
-    for factor in range(rank):
-        # the tangent's direction at the factor's axis, the ket AOs last
-        t = tangent.mT.reshape(
-            nbatch,
-            *(1,) * (nbra + factor),
-            3,
-            *(1,) * (rank - 1 - factor + nket),
-            1,
-            nao[1],
-        )
-        terms.append(lower.unsqueeze(nbra + factor) * t)
-    total = torch.stack(terms).sum(0).reshape(nbatch, -1, *nao)
-    return total if name.components is None else total[:, name.components]
+    The transpose of `_ket_term`: the tangent of the block for the tangents
+    of its ket AOs' centres, shape ``(batch, nao_ket, 3)``, shape
+    ``(batch, ncomp, nao_bra, nao_ket)``
+    """
+    assert name.is_symmetric
+    nabla = _derivative("ip", "ket", name, basis, inputs, block=block)
+    nabla = nabla.reshape(3, ncomp, *nabla.shape[-2:])
+    return -_directional(nabla, tangent, "ket")
 
 
 def _tangent_alphas(
@@ -1438,9 +2065,13 @@ def _weights(
     return take(rows, cols)
 
 
-def _flat_components(integral: Tensor, name: IntegralName) -> Tensor:
-    """(Block of an) integral `name` with flattened components"""
-    return integral.reshape(math.prod(name.comp_shape), *integral.shape[-2:])
+def _flat_components(integral: Tensor) -> Tensor:
+    """
+    (Block of an) integral with flattened components, including the leading
+    sums of a block's images
+    """
+    ncomp = math.prod(integral.shape[:-2])
+    return integral.reshape(ncomp, *integral.shape[-2:])
 
 
 def _uncontracted(
@@ -1483,14 +2114,18 @@ def _derivative(
     if not DERIVATIVE_OPERATORS[deriv]:
         return result
     axis = 0 if side == "bra" else len(name.bra_shape) + len(name.op_shape)
-    return result.movedim(axis, 0)
+    return result.movedim(len(block.lead) + axis, 0)
 
 
-def _transpose(integral: Tensor, name: IntegralName) -> Tensor:
-    """Turn the integral `name` into the integral ``name.transposed()``"""
+def _transpose(integral: Tensor, name: IntegralName, nlead: int) -> Tensor:
+    """
+    Turn the integral `name` into the integral ``name.transposed()``, with
+    `nlead` leading axes (the sums of a block's images) kept in front
+    """
     nbra, nop = len(name.bra_shape), len(name.op_shape)
-    ncomp = len(name.comp_shape)
-    bra = list(range(nbra))
-    op = list(range(nbra, nbra + nop))
-    ket = list(range(nbra + nop, ncomp))
-    return integral.permute(*ket, *op, *bra, ncomp + 1, ncomp)
+    ncomp = nlead + len(name.comp_shape)
+    lead = list(range(nlead))
+    bra = list(range(nlead, nlead + nbra))
+    op = list(range(nlead + nbra, nlead + nbra + nop))
+    ket = list(range(nlead + nbra + nop, ncomp))
+    return integral.permute(*lead, *ket, *op, *bra, ncomp + 1, ncomp)

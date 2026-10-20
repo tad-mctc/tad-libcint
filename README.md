@@ -117,7 +117,26 @@ Gradients with respect to positions, exponents (`basis.alphas`) and coefficients
 `Shell` and `Basis` are [tad-mctc](https://github.com/tad-mctc/tad-mctc) `Node`s, like `Structure`: `basis.to(device)` converts them, and they pass through `torch.func` transforms (e.g. `jacrev` with respect to a whole basis).
 The exponents and coefficients are shared by all atoms of an element.
 
-Periodic structures (with a `lattice`) are not supported yet and raise an error.
+### Periodic structures
+
+For a structure with a `lattice` (vectors as rows, in Bohr), the integrals are lattice sums over the periodic images of the ket, $A_{\mu\nu}(\mathbf{k}) = \sum_{\mathbf{T}} e^{i\mathbf{k}\cdot\mathbf{T}} \langle \mu | \hat{O} | \nu(\mathbf{T}) \rangle$: real at the Γ point (the default), complex at k-points.
+Ket-centred moments (`"j"`, `"jj"`, `"jjj"`) are taken about the ket's image, as in tblite; moments about the origin (`"r0"`, ...) and the nuclear attraction (`"nuc"`) have no periodic integral.
+The images run along the periodic axes of `structure.periodic` only, so 1D and 2D systems need no special treatment.
+
+```python
+from tad_mctc.kpoints import make_kpoints
+
+cell = water.replace(lattice=6.0 * torch.eye(3, **dd))  # periodic along all axes
+s = overlap(basis, cell)  # (nao, nao), Gamma point
+kpoints = make_kpoints(cell.lattice, (2, 2, 2))  # Gamma-centred grid
+dipole_k = int1e("j", basis, cell, kpoints=kpoints)  # (8, 3, nao, nao), complex
+```
+
+k-points are Cartesian (1/Bohr), as in PySCF, either a tensor or a [tad-mctc](https://github.com/tad-mctc/tad-mctc) `KPoints` with weights and a mask; sets of different size in a batch are packed with `tad_mctc.kpoints.pack_kpoints` (padding k-points give zeros).
+The images are screened to the `precision` (default `1e-10`), an estimate of the largest neglected contribution to an element.
+
+Gradients with respect to the lattice are available like those with respect to the positions; the strain derivative follows as $\sigma = (\partial E/\partial \mathbf{A})^T \mathbf{A} + (\partial E/\partial \mathbf{R})^T \mathbf{R}$.
+They are taken at fixed fractional k-points, as in PySCF's stress code: the k-points are construction data and carry no gradient, however they were built.
 
 ### Batches and `torch.func`
 
