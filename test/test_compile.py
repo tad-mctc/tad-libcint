@@ -18,10 +18,11 @@
 Test the integrals under `torch.compile`.
 
 libcint is called through ctypes inside custom autograd functions, which
-Dynamo cannot trace: the integrals compile with graph breaks, with values and
-gradients (`.backward()`) equal to eager mode. Compiling them as one graph
-(`fullgraph=True`) fails, and so does compiling `torch.func` transforms of
-them (at least with torch 2.7); these tests record that.
+Dynamo cannot trace. The integrals are therefore excluded from compilation
+(`torch.compiler.disable`): a compiled function runs them eagerly, with
+values and gradients (`.backward()`) equal to eager mode. Compiling them as
+one graph (`fullgraph=True`) fails, and so does compiling `torch.func`
+transforms of them (at least with torch 2.7); these tests record that.
 
 The backend is ``aot_eager``, which traces with Dynamo and AOTAutograd without
 generating code (independent of a C++ toolchain).
@@ -69,7 +70,7 @@ CASES = ["molecule", "cell", "cell-k"]
 
 @pytest.mark.parametrize("case", CASES)
 def test_value(case: str) -> None:
-    """Compiled with graph breaks, the value equals eager mode."""
+    """Compiled around the integral, the value equals eager mode."""
     torch._dynamo.reset()  # pylint: disable=protected-access
     energy, structure = _energy(case)
     compiled = torch.compile(energy, backend=BACKEND)
@@ -80,7 +81,7 @@ def test_value(case: str) -> None:
 
 @pytest.mark.parametrize("case", CASES)
 def test_backward(case: str) -> None:
-    """Compiled with graph breaks, `.backward()` equals eager mode."""
+    """Compiled around the integral, `.backward()` equals eager mode."""
     torch._dynamo.reset()  # pylint: disable=protected-access
     energy, structure = _energy(case)
     expected = torch.func.grad(energy)(structure.positions)
@@ -93,8 +94,8 @@ def test_backward(case: str) -> None:
 
 @pytest.mark.xfail(
     strict=True,
-    reason="libcint is called through ctypes in custom autograd functions, "
-    "which Dynamo cannot trace as one graph",
+    reason="the integrals are excluded from compilation, as Dynamo cannot "
+    "trace libcint's ctypes calls",
 )
 @pytest.mark.parametrize("case", CASES)
 def test_fullgraph(case: str) -> None:

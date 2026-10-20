@@ -192,6 +192,11 @@ class Inputs(NamedTuple):
     """``False`` for padding k-points, shape ``(nk,)``."""
 
 
+# Dynamo cannot trace the C calls, and tracing the construction around them
+# (layouts, numpy) only crashes some PyTorch versions (2.8, 2.10: frozen
+# dataclasses with cached properties; 2.11: cells). Compiled callers run the
+# integrals eagerly, with their gradients, instead.
+@torch.compiler.disable
 def int1e(
     name: str,
     basis: Basis,
@@ -1021,30 +1026,40 @@ class _StructureIntegral:
         the last call, as the backward pass evaluates the integral (its
         graph) of the forward pass again.
         """
-        if inputs.lattice is None:
-            layout = self.basis.layout(inputs.numbers)
-            if layout.nsh**2 < _SCREENING_MIN_PAIRS:
-                return _Block.full(layout, None)
-            structure = [inputs.numbers, inputs.positions, inputs.alphas]
-        else:
+        if inputs.lattice is not None:
             structure = [t for t in inputs if t is not None]
+            block = self._reused(structure)
+            if block is None:
+                block = _periodic_block(
+                    self.name, self.basis, inputs, self.precision
+                )
+                self._keep(structure, block)
+            return block
 
-        if self._screening is not None:
-            last, block = self._screening
-            if all(
-                a.shape == b.shape and torch.equal(a, b)
-                for a, b in zip(last, structure)
-            ):
-                return block
-
-        if inputs.lattice is None:
+        layout = self.basis.layout(inputs.numbers)
+        if layout.nsh**2 < _SCREENING_MIN_PAIRS:
+            return _Block.full(layout, None)
+        structure = [inputs.numbers, inputs.positions, inputs.alphas]
+        block = self._reused(structure)
+        if block is None:
             block = _Block.full(layout, _screened_pairs(layout, inputs))
-        else:
-            block = _periodic_block(
-                self.name, self.basis, inputs, self.precision
-            )
-        self._screening = ([t.detach().clone() for t in structure], block)
+            self._keep(structure, block)
         return block
+
+    def _reused(self, structure: list[Tensor]) -> _Block | None:
+        """The block of the last call, if it was for the same structure"""
+        if self._screening is None:
+            return None
+        last, block = self._screening
+        same = all(
+            a.shape == b.shape and torch.equal(a, b)
+            for a, b in zip(last, structure)
+        )
+        return block if same else None
+
+    def _keep(self, structure: list[Tensor], block: _Block) -> None:
+        """Keep the block of `structure` for the next call"""
+        self._screening = ([t.detach().clone() for t in structure], block)
 
 
 class _SelectedOutputs:
